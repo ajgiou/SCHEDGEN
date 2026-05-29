@@ -90,4 +90,4 @@ All loaded from CDN — no `npm install` needed.
 
 ## Browser Support
 
-Works in all modern browsers (Chrome, Firefox, Safari, Edge). Requires JavaScript enabled. Export features depend on CDN availability.
+Works in all modern browsers (Brave, Chrome, Edge, Firefox, Opera, Safari, Zen). Requires JavaScript enabled. Export features depend on CDN availability.
