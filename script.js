@@ -1,56 +1,38 @@
-/* ================================================================
-   SCHEDGEN — SCRIPT.JS
-   Modules: Parser, Renderer, Exporter, UI Controller
-   ================================================================ */
-
 (() => {
   'use strict';
 
-  /* ── STATE ────────────────────────────────────────────────────── */
-  const state = {
-    rawInput: '',
-    parsedData: null,
-    hasSchedule: false,
+  const STORAGE_KEY   = 'schedgen_v2_input';
+  const AUTOGEN_KEY   = 'schedgen_v2_autogen';
+  const VERSION       = 'v2.0';
+
+  const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+  const DAY_ALIASES = {
+    monday:'Monday', mon:'Monday', mo:'Monday',
+    tuesday:'Tuesday', tue:'Tuesday', tu:'Tuesday',
+    wednesday:'Wednesday', wed:'Wednesday', we:'Wednesday',
+    thursday:'Thursday', thu:'Thursday', th:'Thursday',
+    friday:'Friday', fri:'Friday', fr:'Friday',
+    saturday:'Saturday', sat:'Saturday', sa:'Saturday',
+    sunday:'Sunday', sun:'Sunday', su:'Sunday',
   };
 
-  /* ── CONSTANTS ────────────────────────────────────────────────── */
-  const STORAGE_KEY = 'schedgen_input';
-  const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-  const DAY_SHORT = { Monday: 'MON', Tuesday: 'TUE', Wednesday: 'WED', Thursday: 'THU', Friday: 'FRI', Saturday: 'SAT', Sunday: 'SUN' };
+  const DAY_SHORT = {
+    Monday:'MON', Tuesday:'TUE', Wednesday:'WED',
+    Thursday:'THU', Friday:'FRI', Saturday:'SAT', Sunday:'SUN',
+  };
 
-  // Curated color palette (Nothing / TE aesthetic)
   const SUBJECT_COLORS = [
-    '#e8571a', // muted orange
-    '#b8ff57', // dot-matrix green
-    '#57b8ff', // cool blue
-    '#ff5797', // magenta-pink
-    '#ffd557', // warm yellow
-    '#57ffd5', // teal
-    '#d557ff', // purple
-    '#ff8c57', // coral
-    '#57ff8c', // lime
-    '#8c57ff', // indigo
+    '#e8571a',
+    '#57b8ff',
+    '#b8ff57',
+    '#ff5797',
+    '#ffd557',
+    '#57ffd5',
+    '#d557ff',
+    '#ff8c57',
   ];
 
-  /* ── DOM REFERENCES ───────────────────────────────────────────── */
-  const $ = (sel) => document.querySelector(sel);
-  const textarea = $('#scheduleInput');
-  const btnGenerate = $('#btnGenerate');
-  const btnClear = $('#btnClear');
-  const btnLoadExample = $('#btnLoadExample');
-  const statusBar = $('#statusBar');
-  const statusText = $('#statusText');
-  const timetableEl = $('#timetable');
-  const timetableEmpty = $('#timetableEmpty');
-  const timetableWrapper = $('#timetableWrapper');
-  const inputIndicator = $('#inputIndicator');
-  const outputIndicator = $('#outputIndicator');
-  const btnExportPNG = $('#btnExportPNG');
-  const btnExportPDF = $('#btnExportPDF');
-  const btnExportHTML = $('#btnExportHTML');
-  const btnPrint = $('#btnPrint');
-
-  /* ── EXAMPLE DATA ─────────────────────────────────────────────── */
   const EXAMPLE_INPUT = `Monday
 • CC-102 Computer Programming 1: 8:00 AM - 11:00 AM (COM LAB 1) [Lab]
 • MATH-101 College Algebra: 1:00 PM - 3:00 PM (RM 204)
@@ -74,106 +56,166 @@ Friday
 • MATH-101 College Algebra: 10:00 AM - 12:00 PM (RM 204)
 • PE-101 Physical Education: 1:00 PM - 2:30 PM (GYM)`;
 
+  const state = {
+    rawInput:    '',
+    parsedData:  null,
+    hasSchedule: false,
+    autoGenerate: false,
+    autoGenTimer: null,
+  };
 
-  /* ================================================================
-     PARSER MODULE
-     parseSchedule(rawText) → { days: [...], warnings: [...] }
-     ================================================================ */
+  const $ = (sel, ctx) => (ctx || document).querySelector(sel);
+  const $$ = (sel, ctx) => Array.from((ctx || document).querySelectorAll(sel));
+
+  const DOM = {
+    get textarea()        { return $('#scheduleInput'); },
+    get btnGenerate()     { return $('#btnGenerate'); },
+    get btnClear()        { return $('#btnClear'); },
+    get btnClearStorage() { return $('#btnClearStorage'); },
+    get btnLoadExample()  { return $('#btnLoadExample'); },
+    get btnFormatHelp()   { return $('#btnFormatHelp'); },
+    get statusText()      { return $('#statusText'); },
+    get parseCount()      { return $('#parseCount'); },
+    get timetable()       { return $('#timetable'); },
+    get timetableEmpty()  { return $('#timetableEmpty'); },
+    get timetableWrapper(){ return $('#timetableWrapper'); },
+    get btnExportPNG()    { return $('#btnExportPNG'); },
+    get btnExportPDF()    { return $('#btnExportPDF'); },
+    get btnExportHTML()   { return $('#btnExportHTML'); },
+    get btnExportCopy()   { return $('#btnExportCopy'); },
+    get btnPrint()        { return $('#btnPrint'); },
+    get chkAutoGen()      { return $('#chkAutoGen'); },
+    get formatModal()     { return $('#formatModal'); },
+    get modalClose()      { return $('#modalClose'); },
+    get inputPanel()      { return $('#inputPanel'); },
+    get toggleInputBtn()  { return $('#toggleInputBtn'); },
+    get warningsBox()     { return $('#warningsBox'); },
+    get warningsList()    { return $('#warningsList'); },
+    get currentTimeBar()  { return $('#currentTimeBar'); },
+  };
+
   const Parser = (() => {
 
-    /**
-     * Parse a time string like "8:00 AM", "1:00 PM", "13:00", "08:00"
-     * Returns minutes from midnight, or null if invalid.
-     */
-    function parseTime(str) {
+    function parseTimeSingle(str) {
       if (!str) return null;
       str = str.trim();
 
-      // 12-hour format: 8:00 AM, 12:30 PM, etc.
-      const match12 = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-      if (match12) {
-        let hours = parseInt(match12[1], 10);
-        const mins = parseInt(match12[2], 10);
-        const period = match12[3].toUpperCase();
-        if (hours < 1 || hours > 12 || mins < 0 || mins > 59) return null;
-        if (period === 'AM' && hours === 12) hours = 0;
-        if (period === 'PM' && hours !== 12) hours += 12;
-        return hours * 60 + mins;
+      const m12 = str.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (m12) {
+        let h = parseInt(m12[1], 10);
+        const min = parseInt(m12[2], 10);
+        const p = m12[3].toUpperCase();
+        if (h < 1 || h > 12 || min < 0 || min > 59) return null;
+        if (p === 'AM' && h === 12) h = 0;
+        if (p === 'PM' && h !== 12) h += 12;
+        return h * 60 + min;
       }
 
-      // 24-hour format: 08:00, 13:30, etc.
-      const match24 = str.match(/^(\d{1,2}):(\d{2})$/);
-      if (match24) {
-        const hours = parseInt(match24[1], 10);
-        const mins = parseInt(match24[2], 10);
-        if (hours < 0 || hours > 23 || mins < 0 || mins > 59) return null;
-        return hours * 60 + mins;
+      const m24 = str.match(/^(\d{1,2}):(\d{2})$/);
+      if (m24) {
+        const h = parseInt(m24[1], 10);
+        const min = parseInt(m24[2], 10);
+        if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+        return h * 60 + min;
+      }
+
+      const mBare = str.match(/^(\d{1,2})$/);
+      if (mBare) {
+        const h = parseInt(mBare[1], 10);
+        if (h < 0 || h > 23) return null;
+        return h * 60;
       }
 
       return null;
     }
 
-    /**
-     * Format minutes from midnight to display string.
-     */
+    function guessAmPm(startMin, endMin, rawStart, rawEnd) {
+      const hasAmPm = /AM|PM/i.test(rawStart) || /AM|PM/i.test(rawEnd);
+      if (hasAmPm) return { startMin, endMin };
+
+      const startH = Math.floor(startMin / 60);
+      const endH   = Math.floor(endMin / 60);
+
+      if (startH >= 1 && startH <= 12 && endH >= 1 && endH <= 12) {
+        if (endH <= startH) {
+          if (startH < 12) {
+            return { startMin, endMin: endMin + 12 * 60 };
+          }
+        }
+        return { startMin, endMin };
+      }
+
+      return { startMin, endMin };
+    }
+
     function formatTime(minutes) {
-      let h = Math.floor(minutes / 60);
+      let h = Math.floor(minutes / 60) % 24;
       const m = minutes % 60;
       const period = h >= 12 ? 'PM' : 'AM';
       if (h === 0) h = 12;
       else if (h > 12) h -= 12;
-      return `${h}:${m.toString().padStart(2, '0')} ${period}`;
+      return `${h}:${String(m).padStart(2, '0')} ${period}`;
     }
 
-    /**
-     * Hash a string to pick a color index deterministically.
-     */
     function hashCode(str) {
-      let hash = 0;
+      let h = 5381;
       for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash; // Convert to 32bit int
+        h = ((h << 5) + h) ^ str.charCodeAt(i);
+        h = h >>> 0;
       }
-      return Math.abs(hash);
+      return h;
     }
 
-    /**
-     * Check if a line is a day header.
-     */
-    function isDayLine(line) {
-      const trimmed = line.trim();
-      return DAY_NAMES.some(d => d.toLowerCase() === trimmed.toLowerCase());
+    function colorForCode(code) {
+      return SUBJECT_COLORS[hashCode(code.toUpperCase()) % SUBJECT_COLORS.length];
     }
 
-    /**
-     * Normalize day name to title case.
-     */
     function normalizeDay(line) {
-      const trimmed = line.trim().toLowerCase();
-      return DAY_NAMES.find(d => d.toLowerCase() === trimmed) || trimmed;
+      const key = line.trim().toLowerCase().replace(/[^a-z]/g, '');
+      return DAY_ALIASES[key] || null;
     }
 
-    /**
-     * Parse a single class entry line.
-     * Expected: • SubjectCode Subject Name: StartTime - EndTime (Room) [Type]
-     * Returns class object or null.
-     */
+    function extractTimeRange(str) {
+      const T = '(\\d{1,2}(?::\\d{2})?\\s*(?:AM|PM)?)';
+      const SEP = '\\s*[-–—]\\s*';
+      const pattern = new RegExp(T + SEP + T, 'i');
+
+      const match = str.match(pattern);
+      if (!match) return null;
+
+      const rawStart = match[1].trim();
+      const rawEnd   = match[2].trim();
+
+      let startMin = parseTimeSingle(rawStart);
+      let endMin   = parseTimeSingle(rawEnd);
+
+      if (startMin === null || endMin === null) return null;
+
+      const guessed = guessAmPm(startMin, endMin, rawStart, rawEnd);
+      startMin = guessed.startMin;
+      endMin   = guessed.endMin;
+
+      if (endMin <= startMin) endMin += 1440;
+
+      const matchIdx   = str.indexOf(match[0]);
+      const beforeTime = str.substring(0, matchIdx);
+      const afterTime  = str.substring(matchIdx + match[0].length);
+
+      return { startMin, endMin, rawStart, rawEnd, beforeTime, afterTime };
+    }
+
     function parseClassLine(line) {
-      // Remove leading bullet, dash, or whitespace
-      let cleaned = line.replace(/^[\s•\-\*·▸►]+/, '').trim();
+      let cleaned = line.replace(/^[\s•\-\*·▸►→]+/, '').trim();
       if (!cleaned) return null;
 
-      // Try to extract [Type] — Lab or Lecture
-      let type = 'Lecture'; // default
-      const typeMatch = cleaned.match(/\[(Lab|Lecture|LEC|LAB)\]\s*$/i);
+      let type = 'Lecture';
+      const typeMatch = cleaned.match(/\[([^\]]+)\]\s*$/i);
       if (typeMatch) {
-        const t = typeMatch[1].toLowerCase();
-        type = (t === 'lab') ? 'Lab' : 'Lecture';
+        const t = typeMatch[1].trim().toLowerCase();
+        type = (t === 'lab' || t === 'laboratory') ? 'Lab' : 'Lecture';
         cleaned = cleaned.substring(0, typeMatch.index).trim();
       }
 
-      // Try to extract (Room)
       let room = 'TBA';
       const roomMatch = cleaned.match(/\(([^)]+)\)\s*$/);
       if (roomMatch) {
@@ -181,366 +223,359 @@ Friday
         cleaned = cleaned.substring(0, roomMatch.index).trim();
       }
 
-      // Try to split by colon → left is code+name, right is time range
-      const colonIdx = cleaned.indexOf(':');
-      // We need to be careful — time strings also contain colons
-      // Strategy: find the colon that separates name from time
-      // The time part will be like "8:00 AM - 11:00 AM" or "08:00 - 11:00"
-      // So we look for a colon where the left side doesn't look like just a number
+      const timeData = extractTimeRange(cleaned);
+      if (!timeData) return null;
 
-      let leftPart = '';
-      let timePart = '';
+      const { startMin, endMin, beforeTime, afterTime } = timeData;
 
-      // Find time pattern in the string
-      // Pattern: digit:digit(space?AM/PM)? - digit:digit(space?AM/PM)?
-      const timePattern = /(\d{1,2}:\d{2}\s*(?:AM|PM)?)\s*[-–—]\s*(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i;
-      const timeMatch = cleaned.match(timePattern);
+      let leftPart = beforeTime.replace(/[:\-–—]\s*$/, '').trim();
 
-      if (timeMatch) {
-        const timeStartIdx = cleaned.indexOf(timeMatch[0]);
-        leftPart = cleaned.substring(0, timeStartIdx).trim();
-        // Remove trailing colon or dash from left part
-        leftPart = leftPart.replace(/[:;\-–—]\s*$/, '').trim();
-        timePart = timeMatch[0];
-      } else {
-        return null; // Can't find time — malformed
-      }
-
-      // Parse times
-      const startTimeStr = timeMatch[1].trim();
-      const endTimeStr = timeMatch[2].trim();
-      const startMinutes = parseTime(startTimeStr);
-      const endMinutes = parseTime(endTimeStr);
-
-      if (startMinutes === null || endMinutes === null) return null;
-
-      // Split left part into code and name
-      // Code is the first "word" (alphanumeric + hyphens)
-      const codeMatch = leftPart.match(/^([A-Za-z0-9][\w\-]*)/);
+      const codeMatch = leftPart.match(/^([A-Za-z][A-Za-z0-9\-_]*[0-9A-Za-z]|[A-Za-z][0-9A-Za-z\-_]*)/);
       let code = '';
-      let name = leftPart;
+      let name = '';
 
       if (codeMatch) {
         code = codeMatch[1].toUpperCase();
         name = leftPart.substring(codeMatch[0].length).trim();
+        name = name.replace(/^[:\-–—\s]+/, '').trim();
+      } else {
+        name = leftPart;
+        code = leftPart.split(/\s+/)[0].toUpperCase() || 'UNK';
       }
 
-      if (!name && code) {
-        name = code; // Fallback: use code as name
-      }
-
+      if (!name && code) name = code;
       if (!code) return null;
-
-      // Determine color
-      const colorIdx = hashCode(code) % SUBJECT_COLORS.length;
-      const color = SUBJECT_COLORS[colorIdx];
 
       return {
         code,
         name,
-        startTime: formatTime(startMinutes),
-        endTime: formatTime(endMinutes),
-        startMinutes,
-        endMinutes: endMinutes <= startMinutes ? endMinutes + 1440 : endMinutes, // handle midnight crossing
+        startTime:    formatTime(startMin),
+        endTime:      formatTime(endMin),
+        startMinutes: startMin,
+        endMinutes:   endMin,
         room,
         type,
-        color,
+        color:        colorForCode(code),
       };
     }
 
-    /**
-     * Main parse function.
-     */
     function parseSchedule(rawText) {
-      const lines = rawText.split('\n');
-      const days = [];
+      const lines    = rawText.split('\n');
+      const days     = [];
       const warnings = [];
+      const lineAnnotations = {};
       let currentDay = null;
-      let lineNum = 0;
+      let lineNum    = 0;
 
       for (const line of lines) {
         lineNum++;
         const trimmed = line.trim();
-
-        // Skip blank lines
         if (!trimmed) continue;
 
-        // Check if it's a day header
-        if (isDayLine(trimmed)) {
-          const dayName = normalizeDay(trimmed);
-          currentDay = { day: dayName, classes: [] };
-          days.push(currentDay);
+        const dayName = normalizeDay(trimmed);
+        if (dayName) {
+          const existing = days.find(d => d.day === dayName);
+          if (existing) {
+            currentDay = existing;
+          } else {
+            currentDay = { day: dayName, classes: [] };
+            days.push(currentDay);
+          }
           continue;
         }
 
-        // If no day has been set yet, this might be a malformed line
         if (!currentDay) {
-          warnings.push(`Line ${lineNum}: "${trimmed.substring(0, 40)}..." — no day header found above this line`);
+          const msg = `Line ${lineNum}: No day header found above — skipped`;
+          warnings.push(msg);
+          lineAnnotations[lineNum - 1] = msg;
           continue;
         }
 
-        // Try to parse as a class entry
-        const classObj = parseClassLine(trimmed);
-        if (classObj) {
-          currentDay.classes.push(classObj);
+        const cls = parseClassLine(trimmed);
+        if (cls) {
+          currentDay.classes.push(cls);
         } else {
-          warnings.push(`Line ${lineNum}: "${trimmed.substring(0, 50)}${trimmed.length > 50 ? '...' : ''}" — could not parse`);
+          if (trimmed.startsWith('//') || trimmed.startsWith('#')) continue;
+          const msg = `Line ${lineNum}: Could not parse — "${trimmed.substring(0, 55)}${trimmed.length > 55 ? '…' : ''}"`;
+          warnings.push(msg);
+          lineAnnotations[lineNum - 1] = msg;
         }
       }
 
-      // Remove days with no classes
-      const filteredDays = days.filter(d => d.classes.length > 0);
+      const filteredDays = days
+        .filter(d => d.classes.length > 0)
+        .sort((a, b) => DAY_NAMES.indexOf(a.day) - DAY_NAMES.indexOf(b.day));
 
-      // Sort days by canonical order
-      filteredDays.sort((a, b) => DAY_NAMES.indexOf(a.day) - DAY_NAMES.indexOf(b.day));
-
-      return { days: filteredDays, warnings };
+      return { days: filteredDays, warnings, lineAnnotations };
     }
 
-    return { parseSchedule, formatTime, parseTime };
+    return { parseSchedule, formatTime, parseTimeSingle, colorForCode };
   })();
 
+  const OverlapResolver = (() => {
 
-  /* ================================================================
-     RENDERER MODULE
-     renderTimetable(parsedData) → DOM manipulation
-     ================================================================ */
-  const Renderer = (() => {
+    function resolve(classes) {
+      if (!classes.length) return classes;
 
-    /**
-     * Find the global min/max time across all classes, with 30-min buffer.
-     */
-    function getTimeRange(days) {
-      let minTime = Infinity;
-      let maxTime = -Infinity;
-
-      for (const day of days) {
-        for (const cls of day.classes) {
-          if (cls.startMinutes < minTime) minTime = cls.startMinutes;
-          if (cls.endMinutes > maxTime) maxTime = cls.endMinutes;
-        }
-      }
-
-      // Buffer: round down to nearest 30 and subtract 30; round up to nearest 30 and add 30
-      minTime = Math.floor(minTime / 30) * 30 - 30;
-      maxTime = Math.ceil(maxTime / 30) * 30 + 30;
-
-      // Clamp
-      minTime = Math.max(0, minTime);
-      maxTime = Math.min(1440, maxTime);
-
-      return { minTime, maxTime };
-    }
-
-    /**
-     * Generate time slot labels for the range.
-     */
-    function generateTimeSlots(minTime, maxTime) {
-      const slots = [];
-      for (let t = minTime; t <= maxTime; t += 30) {
-        slots.push(t);
-      }
-      return slots;
-    }
-
-    /**
-     * Detect overlapping classes within a day and assign sub-column indices.
-     */
-    function resolveOverlaps(classes) {
-      // Sort by start time, then by duration (longer first)
       const sorted = [...classes].sort((a, b) => {
-        if (a.startMinutes !== b.startMinutes) return a.startMinutes - b.startMinutes;
+        if (a.startMinutes !== b.startMinutes)
+          return a.startMinutes - b.startMinutes;
         return (b.endMinutes - b.startMinutes) - (a.endMinutes - a.startMinutes);
       });
 
-      // Assign columns using a greedy algorithm
-      const columns = []; // each column is an array of classes
+      const active = [];
 
       for (const cls of sorted) {
         let placed = false;
-        for (let i = 0; i < columns.length; i++) {
-          const lastInCol = columns[i][columns[i].length - 1];
-          if (cls.startMinutes >= lastInCol.endMinutes) {
-            columns[i].push(cls);
-            cls._overlapIndex = i;
+        for (let col = 0; col < active.length; col++) {
+          if (active[col] <= cls.startMinutes) {
+            cls._overlapCol = col;
+            active[col] = cls.endMinutes;
             placed = true;
             break;
           }
         }
         if (!placed) {
-          cls._overlapIndex = columns.length;
-          columns.push([cls]);
+          cls._overlapCol = active.length;
+          active.push(cls.endMinutes);
         }
       }
 
-      // Set total columns for each class
-      const totalCols = columns.length;
+      const totalCols = active.length;
       for (const cls of sorted) {
         cls._overlapTotal = totalCols;
       }
 
-      return sorted;
+      return classes;
     }
 
-    /**
-     * Adjust color opacity for background.
-     */
-    function colorWithAlpha(hex, alpha) {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    return { resolve };
+  })();
+
+  const Renderer = (() => {
+
+    const SLOT_H = 48;
+
+    function getTimeRange(days) {
+      let min = Infinity;
+      let max = -Infinity;
+      for (const day of days) {
+        for (const cls of day.classes) {
+          if (cls.startMinutes < min) min = cls.startMinutes;
+          if (cls.endMinutes   > max) max = cls.endMinutes;
+        }
+      }
+      min = Math.max(0,    Math.floor(min / 30) * 30 - 30);
+      max = Math.min(1440, Math.ceil(max  / 30) * 30 + 30);
+      return { minTime: min, maxTime: max };
     }
 
-    /**
-     * Render the timetable into the DOM.
-     */
+    function hexToRgba(hex, alpha) {
+      const r = parseInt(hex.slice(1,3), 16);
+      const g = parseInt(hex.slice(3,5), 16);
+      const b = parseInt(hex.slice(5,7), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    }
+
+    function buildTooltip(cls) {
+      return `${cls.code} — ${cls.name}\n${cls.startTime} – ${cls.endTime}\n${cls.room} · ${cls.type}`;
+    }
+
+    function updateCurrentTimeLine(minTime, maxTime, days) {
+      const bar = DOM.currentTimeBar;
+      if (!bar) return;
+
+      const now     = new Date();
+      const nowDay  = now.toLocaleDateString('en-US', { weekday: 'long' });
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+
+      const dayIdx = days.findIndex(d => d.day === nowDay);
+      if (dayIdx === -1 || nowMins < minTime || nowMins > maxTime) {
+        bar.style.display = 'none';
+        return;
+      }
+
+      const topPx = ((nowMins - minTime) / 30) * SLOT_H;
+      bar.style.display = 'block';
+      bar.style.top     = `${topPx}px`;
+    }
+
     function renderTimetable(parsedData) {
       const { days } = parsedData;
       if (!days.length) return;
 
+      const timetableEl = DOM.timetable;
       const { minTime, maxTime } = getTimeRange(days);
-      const slots = generateTimeSlots(minTime, maxTime);
       const totalMinutes = maxTime - minTime;
-      const slotHeight = 48; // px per 30 min
-      const totalHeight = (totalMinutes / 30) * slotHeight;
+      const totalSlots   = totalMinutes / 30;
+      const totalHeight  = totalSlots * SLOT_H;
 
-      // Clear previous
+      const slots = [];
+      for (let t = minTime; t <= maxTime; t += 30) slots.push(t);
+
       timetableEl.innerHTML = '';
+      timetableEl.removeAttribute('style');
 
-      // ── Header Row ──
       const headerRow = document.createElement('div');
-      headerRow.className = 'timetable__header-row';
+      headerRow.className = 'tt-header-row';
+      headerRow.setAttribute('role', 'row');
 
       const corner = document.createElement('div');
-      corner.className = 'timetable__corner';
+      corner.className = 'tt-corner';
+      corner.setAttribute('aria-hidden', 'true');
       corner.textContent = 'TIME';
       headerRow.appendChild(corner);
 
       for (const day of days) {
-        const dayHeader = document.createElement('div');
-        dayHeader.className = 'timetable__day-header';
-        dayHeader.textContent = DAY_SHORT[day.day] || day.day.toUpperCase();
-        headerRow.appendChild(dayHeader);
-      }
+        const th = document.createElement('div');
+        th.className = 'tt-day-header';
+        th.setAttribute('role', 'columnheader');
+        th.setAttribute('aria-label', day.day);
 
+        const abbr = document.createElement('span');
+        abbr.className = 'tt-day-header__abbr';
+        abbr.textContent = DAY_SHORT[day.day] || day.day.slice(0,3).toUpperCase();
+
+        const full = document.createElement('span');
+        full.className = 'tt-day-header__full';
+        full.textContent = day.day;
+
+        th.appendChild(abbr);
+        th.appendChild(full);
+        headerRow.appendChild(th);
+      }
       timetableEl.appendChild(headerRow);
 
-      // ── Body ──
       const body = document.createElement('div');
-      body.className = 'timetable__body';
+      body.className = 'tt-body';
       body.style.height = `${totalHeight}px`;
 
-      // ── Time Column ──
       const timeCol = document.createElement('div');
-      timeCol.className = 'timetable__time-col';
-      timeCol.style.height = `${totalHeight}px`;
+      timeCol.className = 'tt-time-col';
+      timeCol.setAttribute('aria-hidden', 'true');
 
       for (const slot of slots) {
         const label = document.createElement('div');
-        label.className = 'timetable__time-label';
-        const topPos = ((slot - minTime) / 30) * slotHeight;
-        label.style.top = `${topPos}px`;
-        label.textContent = Parser.formatTime(slot);
+        label.className = 'tt-time-label' + (slot % 60 === 0 ? ' tt-time-label--hour' : '');
+        label.style.top = `${((slot - minTime) / 30) * SLOT_H}px`;
+        if (slot % 60 === 0) {
+          label.textContent = Parser.formatTime(slot);
+        }
         timeCol.appendChild(label);
       }
-
       body.appendChild(timeCol);
 
-      // ── Days Container ──
       const daysContainer = document.createElement('div');
-      daysContainer.className = 'timetable__days-container';
+      daysContainer.className = 'tt-days-container';
+      daysContainer.setAttribute('role', 'grid');
 
-      for (const day of days) {
+      for (let di = 0; di < days.length; di++) {
+        const day    = days[di];
         const dayCol = document.createElement('div');
-        dayCol.className = 'timetable__day-col';
-        dayCol.style.height = `${totalHeight}px`;
+        dayCol.className = 'tt-day-col';
+        dayCol.setAttribute('role', 'row');
+        dayCol.dataset.day = day.day;
 
-        // Grid lines
         for (const slot of slots) {
-          const gridLine = document.createElement('div');
-          gridLine.className = 'timetable__grid-line';
-          if (slot % 60 === 0) gridLine.classList.add('timetable__grid-line--hour');
-          const topPos = ((slot - minTime) / 30) * slotHeight;
-          gridLine.style.top = `${topPos}px`;
-          dayCol.appendChild(gridLine);
+          const gl = document.createElement('div');
+          gl.className = 'tt-grid-line' + (slot % 60 === 0 ? ' tt-grid-line--hour' : '');
+          gl.style.top = `${((slot - minTime) / 30) * SLOT_H}px`;
+          gl.setAttribute('aria-hidden', 'true');
+          dayCol.appendChild(gl);
         }
 
-        // Resolve overlaps and render class blocks
-        const resolvedClasses = resolveOverlaps(day.classes);
+        const resolved = OverlapResolver.resolve(day.classes);
 
-        for (const cls of resolvedClasses) {
+        for (const cls of resolved) {
+          const isLab     = cls.type === 'Lab';
+          const topPx     = ((cls.startMinutes - minTime) / 30) * SLOT_H;
+          const heightPx  = Math.max(((cls.endMinutes - cls.startMinutes) / 30) * SLOT_H, 28);
+          const isShort   = heightPx < 52;
+          const isTiny    = heightPx < 36;
+
           const block = document.createElement('div');
-          const isLab = cls.type.toLowerCase() === 'lab';
-          block.className = `class-block ${isLab ? 'class-block--lab' : 'class-block--lecture'}`;
+          block.className  = [
+            'class-block',
+            isLab  ? 'class-block--lab' : 'class-block--lecture',
+            cls._overlapTotal > 1 ? 'class-block--overlap' : '',
+            isShort ? 'class-block--short' : '',
+          ].filter(Boolean).join(' ');
 
-          // Position
-          const topPx = ((cls.startMinutes - minTime) / 30) * slotHeight;
-          const heightPx = ((cls.endMinutes - cls.startMinutes) / 30) * slotHeight;
-          block.style.top = `${topPx}px`;
-          block.style.height = `${Math.max(heightPx, 28)}px`; // min height for tiny classes
+          block.setAttribute('role', 'gridcell');
+          block.setAttribute('tabindex', '0');
+          block.setAttribute('aria-label', buildTooltip(cls));
+          block.title = buildTooltip(cls);
 
-          // Color
-          if (isLab) {
-            block.style.background = colorWithAlpha(cls.color, 0.18);
-            block.style.borderColor = cls.color;
-          } else {
-            block.style.background = colorWithAlpha(cls.color, 0.08);
-            block.style.borderColor = cls.color;
-          }
+          block.style.top    = `${topPx}px`;
+          block.style.height = `${heightPx}px`;
 
-          // Overlap handling
           if (cls._overlapTotal > 1) {
-            const colWidth = 100 / cls._overlapTotal;
-            block.style.left = `${cls._overlapIndex * colWidth}%`;
-            block.style.width = `calc(${colWidth}% - 4px)`;
-            block.style.marginLeft = '2px';
+            const pct   = 100 / cls._overlapTotal;
+            const left  = cls._overlapCol * pct;
+            block.style.left  = `calc(${left}% + 3px)`;
+            block.style.width = `calc(${pct}% - 6px)`;
+          } else {
+            block.style.left  = '3px';
+            block.style.right = '3px';
           }
 
-          // Content
-          const code = document.createElement('div');
-          code.className = 'class-block__code';
-          code.textContent = cls.code;
-          code.style.color = cls.color;
-          block.appendChild(code);
-
-          // Only show name if block is tall enough
-          if (heightPx > 50) {
-            const name = document.createElement('div');
-            name.className = 'class-block__name';
-            name.textContent = cls.name;
-            block.appendChild(name);
+          block.style.setProperty('--block-color', cls.color);
+          if (isLab) {
+            block.style.background   = hexToRgba(cls.color, 0.15);
+            block.style.borderColor  = cls.color;
+            block.style.borderLeftWidth = '3px';
+          } else {
+            block.style.background   = hexToRgba(cls.color, 0.07);
+            block.style.borderColor  = hexToRgba(cls.color, 0.6);
+            block.style.borderLeftWidth = '3px';
+            block.style.borderLeftColor = cls.color;
           }
 
-          if (heightPx > 70) {
-            const time = document.createElement('div');
-            time.className = 'class-block__time';
-            time.textContent = `${cls.startTime} – ${cls.endTime}`;
-            block.appendChild(time);
-          }
-
-          if (heightPx > 90) {
-            const room = document.createElement('div');
-            room.className = 'class-block__room';
-            room.textContent = cls.room;
-            block.appendChild(room);
-          }
-
-          // Type badge
-          const badge = document.createElement('div');
-          badge.className = 'class-block__type-badge';
+          const badge = document.createElement('span');
+          badge.className   = 'class-block__badge';
           badge.textContent = isLab ? 'LAB' : 'LEC';
-          badge.style.color = isLab ? '' : cls.color;
           if (isLab) {
             badge.style.background = cls.color;
-            badge.style.color = '#0d0d0d';
+            badge.style.color      = '#0a0a0a';
           } else {
-            badge.style.borderColor = cls.color;
+            badge.style.color      = cls.color;
+            badge.style.border     = `1px solid ${hexToRgba(cls.color, 0.7)}`;
           }
           block.appendChild(badge);
 
-          // Tooltip / title
-          block.title = `${cls.code} — ${cls.name}\n${cls.startTime} – ${cls.endTime}\n${cls.room} [${cls.type}]`;
+          const codeEl = document.createElement('div');
+          codeEl.className   = 'class-block__code';
+          codeEl.textContent = cls.code;
+          codeEl.style.color = cls.color;
+          block.appendChild(codeEl);
+
+          if (!isTiny) {
+            const nameEl = document.createElement('div');
+            nameEl.className   = 'class-block__name';
+            nameEl.textContent = cls.name;
+            block.appendChild(nameEl);
+          }
+
+          if (!isShort) {
+            const metaEl = document.createElement('div');
+            metaEl.className   = 'class-block__meta';
+            metaEl.textContent = `${cls.startTime}–${cls.endTime}`;
+            block.appendChild(metaEl);
+
+            if (heightPx >= 90) {
+              const roomEl = document.createElement('div');
+              roomEl.className   = 'class-block__room';
+              roomEl.textContent = cls.room;
+              block.appendChild(roomEl);
+            }
+          }
+
+          block.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              alert(buildTooltip(cls));
+            }
+          });
 
           dayCol.appendChild(block);
         }
@@ -549,130 +584,188 @@ Friday
       }
 
       body.appendChild(daysContainer);
+
+      const ctBar = document.createElement('div');
+      ctBar.id        = 'currentTimeBar';
+      ctBar.className = 'tt-now-line';
+      ctBar.setAttribute('aria-hidden', 'true');
+      daysContainer.appendChild(ctBar);
+
       timetableEl.appendChild(body);
 
-      // Show timetable, hide empty state
-      timetableEl.style.display = 'block';
-      timetableEmpty.style.display = 'none';
+      DOM.timetable.style.display     = 'block';
+      DOM.timetableEmpty.style.display = 'none';
+
+      updateCurrentTimeLine(minTime, maxTime, days);
     }
 
-    /**
-     * Clear the rendered timetable.
-     */
     function clearTimetable() {
-      timetableEl.innerHTML = '';
-      timetableEl.style.display = 'none';
-      timetableEmpty.style.display = 'flex';
+      DOM.timetable.innerHTML       = '';
+      DOM.timetable.style.display   = 'none';
+      DOM.timetableEmpty.style.display = 'flex';
     }
 
-    return { renderTimetable, clearTimetable };
+    return { renderTimetable, clearTimetable, getTimeRange };
   })();
 
-
-  /* ================================================================
-     EXPORTER MODULE
-     Handles PNG, PDF, HTML, and Print exports
-     ================================================================ */
   const Exporter = (() => {
 
-    /**
-     * Export as PNG using html2canvas.
-     */
-    async function exportImage() {
-      if (!state.hasSchedule) return;
+    const HEADER_TEXT = `SCHEDGEN ${VERSION}  ·  VISUAL TIMETABLE EXPORT`;
+
+    async function captureFullCanvas() {
+      const wrapper = DOM.timetableWrapper;
+      const el      = DOM.timetable;
+
+      const origWrapOverflow = wrapper.style.overflow;
+      const origElOverflow   = el.style.overflow;
+      const origScrollTop    = wrapper.scrollTop;
+      const origScrollLeft   = wrapper.scrollLeft;
+
+      wrapper.style.overflow = 'visible';
+      wrapper.scrollTop      = 0;
+      wrapper.scrollLeft     = 0;
+      el.style.overflow      = 'visible';
+
+      await new Promise(r => setTimeout(r, 100));
 
       try {
-        setStatus('GENERATING PNG...', 'warning');
-        const canvas = await html2canvas(timetableEl, {
-          backgroundColor: '#0d0d0d',
-          scale: 2,
-          useCORS: true,
-          logging: false,
-        });
+        const fullW = el.scrollWidth;
+        const fullH = el.scrollHeight;
 
-        const link = document.createElement('a');
-        link.download = 'schedule.png';
-        link.href = canvas.toDataURL('image/png');
-        link.click();
-        setStatus('PNG EXPORTED SUCCESSFULLY', 'success');
-      } catch (err) {
-        console.error('Export PNG error:', err);
-        setStatus('PNG EXPORT FAILED', 'error');
+        const canvas = await html2canvas(el, {
+          backgroundColor: '#0d0d0d',
+          scale:           2,
+          useCORS:         true,
+          allowTaint:      true,
+          logging:         false,
+          scrollX:         -window.scrollX,
+          scrollY:         -window.scrollY,
+          x:               0,
+          y:               0,
+          width:           fullW,
+          height:          fullH,
+          windowWidth:     document.documentElement.scrollWidth,
+          windowHeight:    document.documentElement.scrollHeight,
+        });
+        return canvas;
+      } finally {
+        wrapper.style.overflow = origWrapOverflow;
+        wrapper.scrollTop      = origScrollTop;
+        wrapper.scrollLeft     = origScrollLeft;
+        el.style.overflow      = origElOverflow;
       }
     }
 
-    /**
-     * Export as PDF using html2canvas + jsPDF.
-     */
+    async function buildExportCanvas() {
+      const timetableCanvas = await captureFullCanvas();
+
+      const headerH    = 56;
+      const totalW     = timetableCanvas.width;
+      const totalH     = timetableCanvas.height + headerH;
+
+      const out = document.createElement('canvas');
+      out.width  = totalW;
+      out.height = totalH;
+      const ctx  = out.getContext('2d');
+
+      ctx.fillStyle = '#111111';
+      ctx.fillRect(0, 0, totalW, headerH);
+
+      ctx.fillStyle  = '#f0f0f0';
+      ctx.font       = `bold ${28}px "IBM Plex Mono", monospace`;
+      ctx.textBaseline = 'middle';
+      ctx.fillText('SCHEDGEN', 32, headerH / 2);
+
+      ctx.fillStyle = '#888888';
+      ctx.font      = `${18}px "IBM Plex Mono", monospace`;
+      ctx.fillText(VERSION, 32 + ctx.measureText('SCHEDGEN').width + 16, headerH / 2);
+
+      const dateStr = new Date().toLocaleDateString('en-US', {
+        weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+      });
+      ctx.fillStyle   = '#555555';
+      ctx.font        = `${16}px "IBM Plex Mono", monospace`;
+      ctx.textAlign   = 'right';
+      ctx.fillText('Generated: ' + dateStr, totalW - 32, headerH / 2);
+
+      ctx.strokeStyle = '#2a2a2a';
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, headerH);
+      ctx.lineTo(totalW, headerH);
+      ctx.stroke();
+
+      ctx.drawImage(timetableCanvas, 0, headerH);
+
+      return out;
+    }
+
+    async function exportPNG() {
+      if (!state.hasSchedule) return;
+      setStatus('GENERATING PNG…', 'warning');
+      try {
+        const canvas = await buildExportCanvas();
+        const link   = document.createElement('a');
+        link.download = `schedgen-${dateSlug()}.png`;
+        link.href     = canvas.toDataURL('image/png');
+        link.click();
+        setStatus('PNG SAVED SUCCESSFULLY', 'success');
+      } catch (err) {
+        console.error('[SCHEDGEN] PNG export error:', err);
+        setStatus('PNG EXPORT FAILED — CHECK CONSOLE', 'error');
+      }
+    }
+
     async function exportPDF() {
       if (!state.hasSchedule) return;
-
+      setStatus('GENERATING PDF…', 'warning');
       try {
-        setStatus('GENERATING PDF...', 'warning');
-        const canvas = await html2canvas(timetableEl, {
-          backgroundColor: '#0d0d0d',
-          scale: 2,
-          useCORS: true,
-          logging: false,
-        });
-
-        const imgData = canvas.toDataURL('image/png');
+        const canvas   = await buildExportCanvas();
+        const imgData  = canvas.toDataURL('image/png');
         const { jsPDF } = window.jspdf;
-        const pdf = new jsPDF({
-          orientation: 'landscape',
-          unit: 'mm',
-          format: 'a4',
-        });
 
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 10;
-        const availWidth = pageWidth - margin * 2;
-        const availHeight = pageHeight - margin * 2;
+        const aspectRatio = canvas.width / canvas.height;
+        const orientation = aspectRatio >= 1 ? 'landscape' : 'portrait';
 
-        const imgRatio = canvas.width / canvas.height;
-        let imgW = availWidth;
-        let imgH = imgW / imgRatio;
+        const pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
 
-        if (imgH > availHeight) {
-          imgH = availHeight;
-          imgW = imgH * imgRatio;
-        }
+        const pageW  = pdf.internal.pageSize.getWidth();
+        const pageH  = pdf.internal.pageSize.getHeight();
+        const margin = 8;
+        const availW = pageW - margin * 2;
+        const availH = pageH - margin * 2;
 
-        const x = (pageWidth - imgW) / 2;
-        const y = (pageHeight - imgH) / 2;
+        let imgW = availW;
+        let imgH = imgW / (canvas.width / canvas.height);
+        if (imgH > availH) { imgH = availH; imgW = imgH * (canvas.width / canvas.height); }
+
+        const x = (pageW - imgW) / 2;
+        const y = (pageH - imgH) / 2;
 
         pdf.addImage(imgData, 'PNG', x, y, imgW, imgH);
-        pdf.save('schedule.pdf');
-        setStatus('PDF EXPORTED SUCCESSFULLY', 'success');
+        pdf.save(`schedgen-${dateSlug()}.pdf`);
+        setStatus('PDF SAVED SUCCESSFULLY', 'success');
       } catch (err) {
-        console.error('Export PDF error:', err);
-        setStatus('PDF EXPORT FAILED', 'error');
+        console.error('[SCHEDGEN] PDF export error:', err);
+        setStatus('PDF EXPORT FAILED — CHECK CONSOLE', 'error');
       }
     }
 
-    /**
-     * Export as self-contained HTML file.
-     */
     function exportHTML() {
       if (!state.hasSchedule) return;
-
+      setStatus('GENERATING HTML…', 'warning');
       try {
-        setStatus('GENERATING HTML...', 'warning');
-
-        // Gather all stylesheets content
-        let styles = '';
+        let cssText = '';
         for (const sheet of document.styleSheets) {
           try {
             for (const rule of sheet.cssRules) {
-              styles += rule.cssText + '\n';
+              cssText += rule.cssText + '\n';
             }
-          } catch (e) {
-            // Cross-origin stylesheet, skip
-          }
+          } catch (_) { /* cross-origin — skip */ }
         }
 
-        const timetableHTML = timetableEl.outerHTML;
+        const dateStr  = new Date().toLocaleString();
+        const ttHTML   = DOM.timetable.outerHTML;
 
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -682,231 +775,326 @@ Friday
   <title>Schedule — SCHEDGEN Export</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { background: #0d0d0d; color: #f0f0f0; margin: 0; padding: 24px; font-family: 'Space Grotesk', sans-serif; }
-    ${styles}
-    .timetable { display: block !important; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; }
+    body { background: #0d0d0d; color: #f0f0f0; font-family: 'Space Grotesk', sans-serif; padding: 32px 24px; }
+    .export-shell { max-width: 1400px; margin: 0 auto; }
+    .export-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2a2a2a; }
+    .export-header__brand { font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; font-weight: 700; letter-spacing: 0.15em; color: #f0f0f0; }
+    .export-header__meta  { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: #555; letter-spacing: 0.05em; }
+    .timetable-wrapper { border: 1px solid #2a2a2a; overflow: auto; background: #0d0d0d; border-radius: 2px; }
+    #timetable { display: block !important; }
+    ${cssText}
   </style>
 </head>
 <body>
-  <div style="max-width: 1200px; margin: 0 auto;">
-    <h1 style="font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; letter-spacing: 0.15em; margin-bottom: 24px; color: #888;">SCHEDGEN EXPORT</h1>
-    <div class="timetable-wrapper" style="border: 1px solid #2a2a2a; border-radius: 2px; overflow: auto; background: #0d0d0d;">
-      ${timetableHTML}
+  <div class="export-shell">
+    <div class="export-header">
+      <div class="export-header__brand">SCHEDGEN <span style="color:#555;font-size:0.75em">${VERSION}</span></div>
+      <div class="export-header__meta">Generated: ${dateStr}</div>
+    </div>
+    <div class="timetable-wrapper">
+      ${ttHTML}
     </div>
   </div>
 </body>
 </html>`;
 
-        const blob = new Blob([html], { type: 'text/html' });
+        const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
         const link = document.createElement('a');
-        link.download = 'schedule.html';
-        link.href = URL.createObjectURL(blob);
+        link.download = `schedgen-${dateSlug()}.html`;
+        link.href     = URL.createObjectURL(blob);
         link.click();
         URL.revokeObjectURL(link.href);
-        setStatus('HTML EXPORTED SUCCESSFULLY', 'success');
+        setStatus('HTML SAVED SUCCESSFULLY', 'success');
       } catch (err) {
-        console.error('Export HTML error:', err);
-        setStatus('HTML EXPORT FAILED', 'error');
+        console.error('[SCHEDGEN] HTML export error:', err);
+        setStatus('HTML EXPORT FAILED — CHECK CONSOLE', 'error');
       }
     }
 
-    /**
-     * Print the schedule.
-     */
+    async function copyToClipboard() {
+      if (!state.hasSchedule) return;
+      setStatus('COPYING TO CLIPBOARD…', 'warning');
+      try {
+        const canvas = await buildExportCanvas();
+        canvas.toBlob(async (blob) => {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob }),
+            ]);
+            setStatus('IMAGE COPIED TO CLIPBOARD', 'success');
+          } catch (e) {
+            console.warn('[SCHEDGEN] Clipboard write failed, falling back to download:', e);
+            const link = document.createElement('a');
+            link.download = `schedgen-${dateSlug()}.png`;
+            link.href = URL.createObjectURL(blob);
+            link.click();
+            URL.revokeObjectURL(link.href);
+            setStatus('CLIPBOARD UNAVAILABLE — FILE DOWNLOADED INSTEAD', 'warning');
+          }
+        }, 'image/png');
+      } catch (err) {
+        console.error('[SCHEDGEN] Copy error:', err);
+        setStatus('COPY FAILED — CHECK CONSOLE', 'error');
+      }
+    }
+
     function printSchedule() {
       window.print();
     }
 
-    return { exportImage, exportPDF, exportHTML, printSchedule };
+    function dateSlug() {
+      const d = new Date();
+      return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    return { exportPNG, exportPDF, exportHTML, copyToClipboard, printSchedule };
   })();
 
-
-  /* ================================================================
-     UI CONTROLLER
-     Binds events, manages state, updates interface
-     ================================================================ */
-
-  /**
-   * Set status bar text and style.
-   */
-  function setStatus(text, type = '') {
-    statusText.textContent = text;
-    statusBar.className = 'status-bar';
-    if (type) statusBar.classList.add(`status-bar--${type}`);
+  function setStatus(text, type) {
+    const el = DOM.statusText;
+    if (!el) return;
+    el.textContent = text;
+    el.className   = 'status-text' + (type ? ` status-text--${type}` : '');
   }
 
-  /**
-   * Enable or disable export buttons.
-   */
-  function setExportButtons(enabled) {
-    [btnExportPNG, btnExportPDF, btnExportHTML, btnPrint].forEach(btn => {
-      btn.disabled = !enabled;
-    });
+  function setExportEnabled(enabled) {
+    [DOM.btnExportPNG, DOM.btnExportPDF, DOM.btnExportHTML, DOM.btnExportCopy, DOM.btnPrint]
+      .forEach(btn => { if (btn) btn.disabled = !enabled; });
   }
 
-  /**
-   * Save input to localStorage.
-   */
   function saveToStorage() {
-    try {
-      localStorage.setItem(STORAGE_KEY, textarea.value);
-    } catch (e) {
-      // Storage might be full or unavailable
-    }
+    try { localStorage.setItem(STORAGE_KEY, DOM.textarea.value); } catch (_) {}
   }
 
-  /**
-   * Load input from localStorage.
-   */
   function loadFromStorage() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        textarea.value = saved;
-        state.rawInput = saved;
+        DOM.textarea.value = saved;
+        state.rawInput     = saved;
       }
-    } catch (e) {
-      // Storage unavailable
-    }
+    } catch (_) {}
   }
 
-  /**
-   * Handle GENERATE action.
-   */
+  function clearStorage() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+  }
+
+  function updateParseCount(total, warnings) {
+    const el = DOM.parseCount;
+    if (!el) return;
+    if (total === 0) {
+      el.textContent = '';
+      el.className   = 'parse-count';
+      return;
+    }
+    el.textContent = `${total} class${total !== 1 ? 'es' : ''} · ${warnings} warn`;
+    el.className   = 'parse-count' + (warnings > 0 ? ' parse-count--warn' : ' parse-count--ok');
+  }
+
+  function showWarnings(warnings) {
+    const box  = DOM.warningsBox;
+    const list = DOM.warningsList;
+    if (!box || !list) return;
+    if (!warnings.length) {
+      box.hidden = true;
+      return;
+    }
+    list.innerHTML = '';
+    warnings.forEach(w => {
+      const li = document.createElement('li');
+      li.textContent = w;
+      list.appendChild(li);
+    });
+    box.hidden = false;
+  }
+
+  function liveParseWarnings() {
+    const raw = DOM.textarea.value.trim();
+    if (!raw) { showWarnings([]); return; }
+    const result = Parser.parseSchedule(raw);
+    showWarnings(result.warnings);
+  }
+
   function handleGenerate() {
-    const raw = textarea.value.trim();
+    const raw = DOM.textarea.value.trim();
     if (!raw) {
-      setStatus('NO INPUT — ENTER SCHEDULE DATA FIRST', 'error');
+      setStatus('NO INPUT — ENTER SCHEDULE DATA', 'error');
+      updateParseCount(0, 0);
       return;
     }
 
     state.rawInput = raw;
     saveToStorage();
 
-    // Parse
-    const result = Parser.parseSchedule(raw);
+    const result   = Parser.parseSchedule(raw);
     state.parsedData = result;
 
-    const totalClasses = result.days.reduce((sum, d) => sum + d.classes.length, 0);
-    const warnCount = result.warnings.length;
+    const totalClasses = result.days.reduce((s, d) => s + d.classes.length, 0);
+    const warnCount    = result.warnings.length;
+
+    showWarnings(result.warnings);
 
     if (totalClasses === 0) {
-      setStatus(`NO CLASSES PARSED · ${warnCount} WARNING${warnCount !== 1 ? 'S' : ''} — CHECK INPUT FORMAT`, 'error');
+      setStatus(`NO CLASSES FOUND · ${warnCount} WARNING${warnCount !== 1 ? 'S' : ''} — CHECK FORMAT`, 'error');
+      updateParseCount(0, warnCount);
       Renderer.clearTimetable();
       state.hasSchedule = false;
-      setExportButtons(false);
-      outputIndicator.textContent = '✕';
-      outputIndicator.className = 'panel__indicator';
+      setExportEnabled(false);
       return;
     }
 
-    // Render
     Renderer.renderTimetable(result);
     state.hasSchedule = true;
-    setExportButtons(true);
+    setExportEnabled(true);
 
-    // Status
-    const statusMsg = `${totalClasses} CLASS${totalClasses !== 1 ? 'ES' : ''} PARSED · ${result.days.length} DAY${result.days.length !== 1 ? 'S' : ''} · ${warnCount} WARNING${warnCount !== 1 ? 'S' : ''}`;
-    setStatus(statusMsg, warnCount > 0 ? 'warning' : 'success');
+    const msg = `${totalClasses} CLASS${totalClasses !== 1 ? 'ES' : ''} · ${result.days.length} DAY${result.days.length !== 1 ? 'S' : ''}${warnCount > 0 ? ` · ${warnCount} WARNING${warnCount !== 1 ? 'S' : ''}` : ''}`;
+    setStatus(msg, warnCount > 0 ? 'warning' : 'success');
+    updateParseCount(totalClasses, warnCount);
 
-    // Log warnings to console
     if (warnCount > 0) {
-      console.group('SCHEDGEN — Parse Warnings');
+      console.group('[SCHEDGEN] Parse Warnings');
       result.warnings.forEach(w => console.warn(w));
       console.groupEnd();
     }
-
-    // Update indicator
-    outputIndicator.textContent = '●';
-    outputIndicator.className = 'panel__indicator panel__indicator--active';
   }
 
-  /**
-   * Handle CLEAR action.
-   */
   function handleClear() {
-    textarea.value = '';
-    state.rawInput = '';
-    state.parsedData = null;
-    state.hasSchedule = false;
+    DOM.textarea.value = '';
+    state.rawInput     = '';
+    state.parsedData   = null;
+    state.hasSchedule  = false;
     saveToStorage();
     Renderer.clearTimetable();
-    setExportButtons(false);
+    setExportEnabled(false);
     setStatus('CLEARED — READY FOR INPUT', '');
-    outputIndicator.textContent = '○';
-    outputIndicator.className = 'panel__indicator';
+    updateParseCount(0, 0);
+    showWarnings([]);
   }
 
-  /**
-   * Handle LOAD EXAMPLE action.
-   */
+  function handleClearStorage() {
+    clearStorage();
+    setStatus('LOCAL STORAGE CLEARED', '');
+  }
+
   function handleLoadExample() {
-    textarea.value = EXAMPLE_INPUT;
-    state.rawInput = EXAMPLE_INPUT;
+    DOM.textarea.value = EXAMPLE_INPUT;
+    state.rawInput     = EXAMPLE_INPUT;
     saveToStorage();
-    setStatus('EXAMPLE LOADED — PRESS GENERATE', '');
-    inputIndicator.textContent = '●';
-    inputIndicator.className = 'panel__indicator panel__indicator--active';
-    setTimeout(() => {
-      inputIndicator.textContent = '_';
-      inputIndicator.className = 'panel__indicator';
-    }, 1500);
+    setStatus('EXAMPLE LOADED — PRESS GENERATE OR CTRL+ENTER', '');
+    updateParseCount(0, 0);
+    showWarnings([]);
   }
 
-
-  /* ── EVENT BINDINGS ───────────────────────────────────────────── */
-  function bindEvents() {
-    // Buttons
-    btnGenerate.addEventListener('click', handleGenerate);
-    btnClear.addEventListener('click', handleClear);
-    btnLoadExample.addEventListener('click', handleLoadExample);
-
-    // Export buttons
-    btnExportPNG.addEventListener('click', Exporter.exportImage);
-    btnExportPDF.addEventListener('click', Exporter.exportPDF);
-    btnExportHTML.addEventListener('click', Exporter.exportHTML);
-    btnPrint.addEventListener('click', Exporter.printSchedule);
-
-    // Textarea — save to storage on input
-    textarea.addEventListener('input', () => {
-      state.rawInput = textarea.value;
-      saveToStorage();
-    });
-
-    // Keyboard shortcut: Ctrl+Enter to generate
-    textarea.addEventListener('keydown', (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleGenerate();
-      }
-    });
-
-    // Global keyboard shortcuts
-    document.addEventListener('keydown', (e) => {
-      // Escape to clear
-      if (e.key === 'Escape' && document.activeElement === textarea) {
-        // Don't clear on escape — just blur
-        textarea.blur();
-      }
-    });
+  function scheduleAutoGenerate() {
+    if (!state.autoGenerate) return;
+    clearTimeout(state.autoGenTimer);
+    state.autoGenTimer = setTimeout(handleGenerate, 500);
   }
 
+  function openFormatModal() {
+    const modal = DOM.formatModal;
+    if (!modal) return;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    DOM.modalClose && DOM.modalClose.focus();
+  }
 
-  /* ── INITIALIZATION ───────────────────────────────────────────── */
-  function init() {
-    loadFromStorage();
-    bindEvents();
-    setExportButtons(false);
+  function closeFormatModal() {
+    const modal = DOM.formatModal;
+    if (!modal) return;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    DOM.btnFormatHelp && DOM.btnFormatHelp.focus();
+  }
 
-    // If there's saved input, show a hint
-    if (textarea.value.trim()) {
-      setStatus('PREVIOUS INPUT RESTORED — PRESS GENERATE', '');
+  function toggleInputPanel() {
+    const panel = DOM.inputPanel;
+    const btn   = DOM.toggleInputBtn;
+    if (!panel) return;
+    const collapsed = panel.classList.toggle('input-panel--collapsed');
+    if (btn) {
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      btn.textContent = collapsed ? '▼ SHOW INPUT' : '▲ HIDE INPUT';
     }
   }
 
-  // Run on DOM ready
+  function bindEvents() {
+    DOM.btnGenerate   && DOM.btnGenerate.addEventListener('click', handleGenerate);
+    DOM.btnClear      && DOM.btnClear.addEventListener('click', handleClear);
+    DOM.btnClearStorage && DOM.btnClearStorage.addEventListener('click', handleClearStorage);
+    DOM.btnLoadExample && DOM.btnLoadExample.addEventListener('click', handleLoadExample);
+    DOM.btnFormatHelp && DOM.btnFormatHelp.addEventListener('click', openFormatModal);
+    DOM.modalClose    && DOM.modalClose.addEventListener('click', closeFormatModal);
+    DOM.toggleInputBtn && DOM.toggleInputBtn.addEventListener('click', toggleInputPanel);
+
+    DOM.btnExportPNG  && DOM.btnExportPNG.addEventListener('click', Exporter.exportPNG);
+    DOM.btnExportPDF  && DOM.btnExportPDF.addEventListener('click', Exporter.exportPDF);
+    DOM.btnExportHTML && DOM.btnExportHTML.addEventListener('click', Exporter.exportHTML);
+    DOM.btnExportCopy && DOM.btnExportCopy.addEventListener('click', Exporter.copyToClipboard);
+    DOM.btnPrint      && DOM.btnPrint.addEventListener('click', Exporter.printSchedule);
+
+    DOM.chkAutoGen && DOM.chkAutoGen.addEventListener('change', (e) => {
+      state.autoGenerate = e.target.checked;
+      try { localStorage.setItem(AUTOGEN_KEY, state.autoGenerate ? '1' : '0'); } catch (_) {}
+    });
+
+    const ta = DOM.textarea;
+    if (ta) {
+      ta.addEventListener('input', () => {
+        state.rawInput = ta.value;
+        saveToStorage();
+        liveParseWarnings();
+        scheduleAutoGenerate();
+      });
+
+      ta.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+          e.preventDefault();
+          handleGenerate();
+        }
+      });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const modal = DOM.formatModal;
+        if (modal && !modal.hasAttribute('hidden')) {
+          e.preventDefault();
+          closeFormatModal();
+        }
+      }
+    });
+
+    DOM.formatModal && DOM.formatModal.addEventListener('click', (e) => {
+      if (e.target === DOM.formatModal) closeFormatModal();
+    });
+  }
+
+  function init() {
+    loadFromStorage();
+    bindEvents();
+    setExportEnabled(false);
+
+    try {
+      const saved = localStorage.getItem(AUTOGEN_KEY);
+      if (saved === '1') {
+        state.autoGenerate = true;
+        if (DOM.chkAutoGen) DOM.chkAutoGen.checked = true;
+      }
+    } catch (_) {}
+
+    if (DOM.textarea && DOM.textarea.value.trim()) {
+      setStatus('INPUT RESTORED — PRESS GENERATE OR CTRL+ENTER', '');
+    } else {
+      setStatus('READY — ENTER SCHEDULE DATA OR LOAD EXAMPLE', '');
+    }
+  }
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {

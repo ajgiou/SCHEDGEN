@@ -3,146 +3,300 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SCHEDGEN — Convert plain text schedules into visual weekly timetables. Export as PNG, PDF, or HTML.">
   <title>SCHEDGEN — Visual Timetable Generator</title>
 
-  <!-- Normalize CSS -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
 
-  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-  <!-- App Stylesheet -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- ========== HEADER ========== -->
-  <header class="header">
+  <a class="skip-link" href="#timetableWrapper">Skip to timetable</a>
+
+  <header class="header" role="banner">
+
     <div class="header__brand">
-      <span class="header__logo">SCHEDGEN</span>
-      <span class="header__version">v1.0</span>
+      <span class="header__logo" aria-label="SCHEDGEN">SCHEDGEN</span>
+      <span class="header__version" aria-label="version 2.0">v2.0</span>
     </div>
-    <div class="header__tagline">VISUAL TIMETABLE GENERATOR</div>
+
+    <div class="header__divider" aria-hidden="true"></div>
+
+    <span class="header__tagline" aria-hidden="true">VISUAL TIMETABLE GENERATOR</span>
+
+    <div class="header__right">
+      <button
+        class="header__toggle-btn"
+        id="toggleInputBtn"
+        type="button"
+        aria-controls="inputPanel"
+        aria-expanded="true"
+      >▲ HIDE INPUT</button>
+    </div>
+
   </header>
 
-  <!-- ========== MAIN LAYOUT ========== -->
-  <main class="layout">
+  <main class="app-layout" id="mainLayout">
 
-    <!-- ===== INPUT PANEL ===== -->
-    <section class="panel panel--input" aria-label="Schedule Input">
-      <div class="panel__header">
-        <span class="panel__label">INPUT</span>
-        <span class="panel__indicator" id="inputIndicator">_</span>
-      </div>
+    <section
+      class="input-panel"
+      id="inputPanel"
+      aria-label="Schedule input"
+    >
 
-      <!-- Textarea -->
-      <div class="input-group">
-        <label for="scheduleInput" class="input-label">SCHEDULE DATA</label>
+      <div class="panel-label" aria-hidden="true">INPUT</div>
+
+      <div class="textarea-wrap">
+        <label class="textarea-label" for="scheduleInput">
+          SCHEDULE DATA
+          <span class="textarea-shortcut" aria-label="Keyboard shortcut: Control + Enter">Ctrl+↵</span>
+        </label>
         <textarea
           id="scheduleInput"
           class="textarea"
-          rows="16"
+          rows="18"
           spellcheck="false"
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="off"
+          aria-label="Schedule input. Enter day headers followed by class entries."
+          aria-describedby="warningsBox"
           placeholder="Monday&#10;• CC-102 Computer Programming 1: 8:00 AM - 11:00 AM (COM LAB 1) [Lab]&#10;• MATH-101 College Algebra: 1:00 PM - 3:00 PM (RM 204)&#10;&#10;Tuesday&#10;• CC-101 Introduction to Computing: 9:00 AM - 12:00 PM (COM LAB 2) [Lab]&#10;• ENG-101 Technical Writing: 2:00 PM - 4:00 PM (RM 101) [Lecture]"
-          aria-describedby="formatGuide"
         ></textarea>
       </div>
 
-      <!-- Format Guide -->
-      <details class="format-guide" id="formatGuide">
-        <summary class="format-guide__toggle">
-          <span class="format-guide__icon">[?]</span> FORMAT REFERENCE
-        </summary>
-        <div class="format-guide__content">
-          <pre class="format-guide__pre">
-// ACCEPTED FORMAT
-// ─────────────────────────────────
-Day
-• SubjectCode Subject Name: Start - End (Room) [Type]
+      <div
+        class="warnings-box"
+        id="warningsBox"
+        role="alert"
+        aria-live="polite"
+        hidden
+      >
+        <div class="warnings-box__title">PARSE WARNINGS</div>
+        <ul class="warnings-box__list" id="warningsList" aria-label="Parse warnings"></ul>
+      </div>
 
-// RULES
-// ─────────────────────────────────
-→ Day = Monday, Tuesday, etc.
-→ Bullet: • or - or plain text
-→ Code: alphanumeric + hyphens
-→ Time: 8:00 AM - 11:00 AM
-        or 08:00 - 11:00 (24h)
-→ (Room) is optional → defaults TBA
-→ [Lab] or [Lecture] → defaults Lecture
-→ Blank lines are ignored
-→ Malformed lines are skipped</pre>
-        </div>
-      </details>
-
-      <!-- Action Buttons -->
-      <div class="actions">
-        <button class="btn btn--primary" id="btnGenerate" type="button">
-          <span class="btn__icon">▶</span> GENERATE
-        </button>
-        <button class="btn btn--secondary" id="btnClear" type="button">
-          <span class="btn__icon">✕</span> CLEAR
-        </button>
-        <button class="btn btn--ghost" id="btnLoadExample" type="button">
-          LOAD EXAMPLE
+      <div class="format-help-row">
+        <button
+          class="btn-format-help"
+          id="btnFormatHelp"
+          type="button"
+          aria-haspopup="dialog"
+          aria-controls="formatModal"
+        >
+          <span aria-hidden="true">[?]</span> FORMAT GUIDE
         </button>
       </div>
 
-      <!-- Status Bar -->
-      <div class="status-bar" id="statusBar">
-        <span class="status-bar__text" id="statusText">READY — AWAITING INPUT</span>
+      <div class="actions-row">
+  <button class="btn btn--primary" id="btnGenerate">GENERATE</button>
+  <button class="btn btn--secondary" id="btnClear">CLEAR</button>
+  <button class="btn btn--ghost" id="btnLoadExample">EXAMPLE</button>
+  <button class="btn btn--danger" id="btnClearStorage">
+    <span class="btn__icon" aria-hidden="true">⌫</span> CLEAR STORAGE
+  </button>
+</div>
+
+      <div class="autogen-row">
+        <label class="autogen-label" for="chkAutoGen">
+          <input
+            type="checkbox"
+            id="chkAutoGen"
+            aria-label="Auto-generate timetable as you type (500ms delay)"
+          >
+          <span class="autogen-label-text">AUTO-GENERATE</span>
+        </label>
       </div>
+
+      <div class="status-row" role="status" aria-live="polite">
+        <span class="status-text" id="statusText">READY — ENTER SCHEDULE DATA</span>
+        <span class="parse-count" id="parseCount" aria-live="polite"></span>
+      </div>
+
     </section>
 
-    <!-- ===== OUTPUT PANEL ===== -->
-    <section class="panel panel--output" aria-label="Schedule Output">
-      <div class="panel__header">
-        <span class="panel__label">OUTPUT</span>
-        <span class="panel__indicator" id="outputIndicator">○</span>
-      </div>
+    <section
+      class="output-panel"
+      id="outputPanel"
+      aria-label="Generated timetable"
+    >
 
-      <!-- Timetable Container -->
-      <div class="timetable-wrapper" id="timetableWrapper">
-        <div class="timetable-empty" id="timetableEmpty">
-          <div class="timetable-empty__icon">⬡</div>
-          <div class="timetable-empty__text">NO SCHEDULE GENERATED</div>
-          <div class="timetable-empty__hint">Enter your schedule data and press GENERATE</div>
+      <div class="output-header">
+
+        <span class="output-header__label" aria-hidden="true">OUTPUT</span>
+
+        <div class="export-bar" role="group" aria-label="Export options">
+          <button
+            class="btn btn--export"
+            id="btnExportPNG"
+            type="button"
+            disabled
+            aria-label="Save timetable as PNG image"
+          >
+            <span class="btn__icon" aria-hidden="true">↓</span> PNG
+          </button>
+
+          <button
+            class="btn btn--export"
+            id="btnExportPDF"
+            type="button"
+            disabled
+            aria-label="Save timetable as PDF document"
+          >
+            <span class="btn__icon" aria-hidden="true">↓</span> PDF
+          </button>
+
+          <button
+            class="btn btn--export"
+            id="btnExportHTML"
+            type="button"
+            disabled
+            aria-label="Save timetable as standalone HTML file"
+          >
+            <span class="btn__icon" aria-hidden="true">↓</span> HTML
+          </button>
+
+          <button
+            class="btn btn--export"
+            id="btnExportCopy"
+            type="button"
+            disabled
+            aria-label="Copy timetable image to clipboard"
+          >
+            <span class="btn__icon" aria-hidden="true">⎘</span> COPY
+          </button>
+
+          <button
+            class="btn btn--export"
+            id="btnPrint"
+            type="button"
+            disabled
+            aria-label="Print timetable"
+          >
+            <span class="btn__icon" aria-hidden="true">⎙</span> PRINT
+          </button>
         </div>
-        <div class="timetable" id="timetable" style="display:none;"></div>
+
       </div>
 
-      <!-- Export Controls -->
-      <div class="export-bar" id="exportBar">
-        <button class="btn btn--export" id="btnExportPNG" type="button" disabled>
-          <span class="btn__icon">⬡</span> SAVE PNG
-        </button>
-        <button class="btn btn--export" id="btnExportPDF" type="button" disabled>
-          <span class="btn__icon">⬡</span> SAVE PDF
-        </button>
-        <button class="btn btn--export" id="btnExportHTML" type="button" disabled>
-          <span class="btn__icon">⬡</span> SAVE HTML
-        </button>
-        <button class="btn btn--export" id="btnPrint" type="button" disabled>
-          <span class="btn__icon">⬡</span> PRINT
-        </button>
+      <div
+        class="timetable-wrapper"
+        id="timetableWrapper"
+        role="region"
+        aria-label="Timetable display area"
+        tabindex="0"
+      >
+
+        <div class="timetable-empty" id="timetableEmpty" aria-hidden="false">
+          <div class="timetable-empty__glyph" aria-hidden="true">⬡</div>
+          <div class="timetable-empty__text">NO SCHEDULE GENERATED</div>
+          <div class="timetable-empty__hint">
+            Enter your schedule in the input panel and press GENERATE,
+            or load the example to see how it works.
+          </div>
+        </div>
+
+        <div
+          id="timetable"
+          role="grid"
+          aria-label="Weekly timetable grid"
+        ></div>
+
       </div>
+
     </section>
 
   </main>
 
-  <!-- ========== FOOTER ========== -->
-  <footer class="footer">
-    <span>SCHEDGEN v1.0</span>
-    <span class="footer__sep">·</span>
-    <span>PLAIN TEXT → VISUAL TIMETABLE</span>
+  <div
+    class="modal-backdrop"
+    id="formatModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="modalTitle"
+    hidden
+  >
+    <div class="modal">
+
+      <div class="modal__header">
+        <span class="modal__title" id="modalTitle">FORMAT REFERENCE</span>
+        <button
+          class="modal__close"
+          id="modalClose"
+          type="button"
+          aria-label="Close format guide"
+        >✕ CLOSE</button>
+      </div>
+
+      <div class="modal__body">
+
+        <div class="modal-section">
+          <div class="modal-section__heading">ACCEPTED FORMAT</div>
+          <div class="modal-code" aria-label="Format example"><span class="hl-day">Monday</span>
+<span class="hl-cmt">• bullet (•), dash (-), or no prefix</span>
+<span class="hl-code">CC-102</span> Computer Programming 1: <span class="hl-time">8:00 AM - 11:00 AM</span> <span class="hl-room">(COM LAB 1)</span> <span class="hl-type">[Lab]</span>
+<span class="hl-code">MATH-101</span> College Algebra: <span class="hl-time">1:00 PM - 3:00 PM</span> <span class="hl-room">(RM 204)</span>
+
+<span class="hl-day">Tuesday</span>
+- <span class="hl-code">ENG-101</span> Technical Writing: <span class="hl-time">2:00 PM - 4:00 PM</span> <span class="hl-room">(RM 101)</span> <span class="hl-type">[Lecture]</span></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section__heading">TIME FORMATS SUPPORTED</div>
+          <div class="modal-code" aria-label="Supported time formats"><span class="hl-time">8:00 AM - 11:00 AM</span>    <span class="hl-cmt">// 12-hour with AM/PM</span>
+<span class="hl-time">13:00 - 15:30</span>          <span class="hl-cmt">// 24-hour</span>
+<span class="hl-time">8 - 11</span>                 <span class="hl-cmt">// bare hours (smart AM/PM guess)</span>
+<span class="hl-time">8:30-11:00</span>            <span class="hl-cmt">// no spaces around dash</span></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section__heading">DAY NAMES ACCEPTED</div>
+          <div class="modal-code" aria-label="Accepted day name formats"><span class="hl-day">Monday</span>  <span class="hl-day">Mon</span>  <span class="hl-day">Mo</span>
+<span class="hl-day">Tuesday</span> <span class="hl-day">Tue</span>  <span class="hl-day">Tu</span>
+<span class="hl-day">Wednesday</span> <span class="hl-day">Wed</span> <span class="hl-day">We</span>
+<span class="hl-cmt">// …Saturday, Sun, etc. Case-insensitive.</span></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section__heading">RULES</div>
+          <div class="modal-code" aria-label="Format rules"><span class="hl-cmt">→ Blank lines are ignored</span>
+<span class="hl-cmt">→ Lines starting with // or # are comments</span>
+<span class="hl-cmt">→ (Room) is optional — defaults to TBA</span>
+<span class="hl-cmt">→ [Lab] or [Lecture] — defaults to Lecture</span>
+<span class="hl-cmt">→ Subject code must start with a letter</span>
+<span class="hl-cmt">→ Malformed lines generate a warning</span></div>
+        </div>
+
+        <div class="modal-section">
+          <div class="modal-section__heading">BLOCK TYPES</div>
+          <div class="modal-legend" aria-label="Block type legend">
+            <span class="modal-legend__badge modal-legend__badge--lab" aria-hidden="true">LAB</span>
+            <span class="modal-legend__desc">Laboratory — filled background, solid left border</span>
+            <span class="modal-legend__badge modal-legend__badge--lec" aria-hidden="true">LEC</span>
+            <span class="modal-legend__desc">Lecture — subtle background, colored left border</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer" role="contentinfo">
+    <span class="footer__text">SCHEDGEN v2.0</span>
+    <span class="footer__sep" aria-hidden="true">·</span>
+    <span class="footer__text">PLAIN TEXT → VISUAL TIMETABLE</span>
+    <span class="footer__sep" aria-hidden="true">·</span>
+    <span class="footer__text">html2canvas · jsPDF</span>
   </footer>
 
-  <!-- ========== CDN DEPENDENCIES ========== -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
-  <!-- ========== APP SCRIPT ========== -->
   <script src="script.js"></script>
 
 </body>
