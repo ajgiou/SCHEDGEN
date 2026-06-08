@@ -359,8 +359,4 @@ SCHEDGEN loads two CDN libraries for export functionality:
 
 ## License
 
-[AGPL-3] (https://github.com/ajgiou/SCHEDGEN?tab=AGPL-3.0-1-ov-file)
-
----
-
-*SCHEDGEN v2.0 — built with vanilla HTML, CSS, and JavaScript. No frameworks. No build tools. No nonsense.*
+https://github.com/ajgiou/SCHEDGEN?tab=AGPL-3.0-1-ov-file
