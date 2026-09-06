@@ -1,9 +1,6 @@
 # SCHEDGEN v2.0 — Visual Timetable Generator
 
-***August 2026 update: Development is still happening, but at a slow pace. I've been making fixes and changing the formats to make them easier.***
-
-**PLAIN TEXT → VISUAL TIMETABLE**
-> A fully static, offline-capable web application that parses plain-text academic schedules and renders them as pixel-perfect weekly timetables. Export as PNG, PDF, HTML, or print directly.
+> September 2026 update: Development is still happening, but at a slow pace. I've been making fixes and changing the formats to make them easier.
 
 ---
 
