@@ -668,6 +668,24 @@ Friday
 
     const HEADER_TEXT = `SCHEDGEN ${VERSION}  ·  VISUAL TIMETABLE EXPORT`;
 
+    // Trigger a file download. Many mobile browsers, including Safari on
+    // iOS, ignore click() on a link that is not in the page. This function
+    // adds the link to the page, clicks it, then removes it right after.
+    function triggerDownload(href, filename) {
+      const link = document.createElement('a');
+      link.href     = href;
+      link.download = filename;
+      link.rel      = 'noopener';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      // Wait before revoking a blob URL, so the browser has time to read it.
+      if (href.startsWith('blob:')) {
+        setTimeout(() => URL.revokeObjectURL(href), 1000);
+      }
+    }
+
     async function captureFullCanvas() {
       const wrapper = DOM.timetableWrapper;
       const el      = DOM.timetable;
@@ -766,10 +784,7 @@ Friday
       setStatus('GENERATING PNG…', 'warning');
       try {
         const canvas = await buildExportCanvas();
-        const link   = document.createElement('a');
-        link.download = `schedgen-${dateSlug()}.png`;
-        link.href     = canvas.toDataURL('image/png');
-        link.click();
+        triggerDownload(canvas.toDataURL('image/png'), `schedgen-${dateSlug()}.png`);
         setStatus('PNG SAVED SUCCESSFULLY', 'success');
       } catch (err) {
         console.error('[SCHEDGEN] PNG export error:', err);
@@ -871,11 +886,7 @@ Friday
 </html>`;
 
         const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-        const link = document.createElement('a');
-        link.download = `schedgen-${dateSlug()}.html`;
-        link.href     = URL.createObjectURL(blob);
-        link.click();
-        URL.revokeObjectURL(link.href);
+        triggerDownload(URL.createObjectURL(blob), `schedgen-${dateSlug()}.html`);
         setStatus('HTML SAVED SUCCESSFULLY', 'success');
       } catch (err) {
         console.error('[SCHEDGEN] HTML export error:', err);
@@ -896,11 +907,7 @@ Friday
             setStatus('IMAGE COPIED TO CLIPBOARD', 'success');
           } catch (e) {
             console.warn('[SCHEDGEN] Clipboard write failed, falling back to download:', e);
-            const link = document.createElement('a');
-            link.download = `schedgen-${dateSlug()}.png`;
-            link.href = URL.createObjectURL(blob);
-            link.click();
-            URL.revokeObjectURL(link.href);
+            triggerDownload(URL.createObjectURL(blob), `schedgen-${dateSlug()}.png`);
             setStatus('CLIPBOARD UNAVAILABLE — FILE DOWNLOADED INSTEAD', 'warning');
           }
         }, 'image/png');
