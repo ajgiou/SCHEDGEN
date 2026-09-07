@@ -1,68 +1,148 @@
+/* ============================================================
+   SCHEDGEN v2.1 — Main Stylesheet
+   Sections: Tokens, Reset, Header, Layout, Input Panel,
+             Textarea, Warnings, Buttons, Output Panel,
+             Timetable Grid, Class Blocks, Modal, Footer,
+             Print, Accessibility
+   ============================================================ */
+
+/* ── DESIGN TOKENS ──────────────────────────────────────────
+   Colors, spacing, font sizes, and transition speeds are
+   custom properties here. Dark-mode values are in the
+   body[data-theme='dark'] block below.
+   ──────────────────────────────────────────────────────────── */
 :root {
-  --c-bg:             #0a0a0a;
-  --c-bg-raised:      #111111;
-  --c-bg-surface:     #161616;
-  --c-bg-hover:       #1e1e1e;
-  --c-border:         #222222;
-  --c-border-mid:     #2e2e2e;
-  --c-border-strong:  #3d3d3d;
+  /* Light-mode colors */
+  --theme-background:        #f4f3f1;
+  --theme-surface:           #ffffff;
+  --theme-surface-strong:    #f2f2f0;
+  --theme-border:            #d8d6d3;
+  --theme-border-strong:     #bfbcb9;
+  --theme-border-hover:      #d0cdc9;
+  --theme-text:              #191919;
+  --theme-text-muted:        #5f5f5d;
+  --theme-text-dim:          #8c8c8a;
+  --theme-text-faint:        #b8b8b6;
+  --theme-accent:            #1e1e1e;
+  --theme-accent-soft:       rgba(30,30,30,0.08);
+  --btn-primary-text:        #ffffff;
+  --theme-success:           #1b6a3f;
+  --theme-warning:           #986200;
+  --theme-error:             #8b1e1e;
 
-  --c-text:           #efefef;
-  --c-text-muted:     #888888;
-  --c-text-dim:       #484848;
-  --c-text-faint:     #333333;
+  /* Short names for the tokens above. Used in most rules below. */
+  --c-bg:             var(--theme-background);
+  --c-bg-raised:      var(--theme-surface);
+  --c-bg-surface:     var(--theme-surface-strong);
+  --c-bg-hover:       var(--theme-border-hover);
+  --c-border:         var(--theme-border);
+  --c-border-mid:     var(--theme-border-strong);
+  --c-border-strong:  var(--theme-text-faint);
 
-  --c-accent:         #e8571a;
-  --c-accent-glow:    rgba(232, 87, 26, 0.18);
-  --c-accent-hover:   #f0622a;
-  --c-green:          #a8f040;
-  --c-green-dim:      rgba(168, 240, 64, 0.15);
-  --c-amber:          #f0c040;
-  --c-amber-dim:      rgba(240, 192, 64, 0.12);
-  --c-red:            #f04444;
-  --c-red-dim:        rgba(240, 68, 68, 0.12);
-  --c-blue:           #57b8ff;
+  --c-text:           var(--theme-text);
+  --c-text-muted:     var(--theme-text-muted);
+  --c-text-dim:       var(--theme-text-dim);
+  --c-text-faint:     var(--theme-text-faint);
+
+  --c-accent:         var(--theme-accent);
+  --c-accent-glow:    rgba(30,30,30,0.12);
+  --c-accent-hover:   #000000;
+  --c-green:          #1b6a3f;
+  --c-green-dim:      rgba(27,106,63,0.15);
+  --c-amber:          #986200;
+  --c-amber-dim:      rgba(152,98,0,0.14);
+  --c-red:            #8b1e1e;
+  --c-red-dim:        rgba(139,30,30,0.14);
+  --c-blue:           #1c5db8;
 
   --f-mono:   'IBM Plex Mono', 'Courier New', monospace;
   --f-sans:   'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
 
-  --fs-2xs:   0.625rem;
-  --fs-xs:    0.6875rem;
-  --fs-sm:    0.8125rem;
-  --fs-base:  0.9375rem;
-  --fs-md:    1rem;
-  --fs-lg:    1.125rem;
+  --fs-2xs:   0.75rem;
+  --fs-xs:    0.8125rem;
+  --fs-sm:    0.9375rem;
+  --fs-base:  1rem;
+  --fs-md:    1.0625rem;
+  --fs-lg:    1.1875rem;
   --fs-xl:    1.375rem;
-  --fs-2xl:   1.75rem;
+  --fs-2xl:   1.625rem;
 
   --ls-tight:   0.02em;
-  --ls-normal:  0.06em;
-  --ls-wide:    0.12em;
-  --ls-wider:   0.2em;
-  --ls-widest:  0.3em;
+  --ls-normal:  0.05em;
+  --ls-wide:    0.1em;
+  --ls-wider:   0.18em;
+  --ls-widest:  0.22em;
 
-  --sp-1:   4px;
-  --sp-2:   8px;
-  --sp-3:   12px;
-  --sp-4:   16px;
-  --sp-5:   20px;
-  --sp-6:   24px;
-  --sp-8:   32px;
-  --sp-10:  40px;
-  --sp-12:  48px;
+  --sp-1:   6px;
+  --sp-2:   10px;
+  --sp-3:   14px;
+  --sp-4:   18px;
+  --sp-5:   24px;
+  --sp-6:   28px;
+  --sp-8:   34px;
+  --sp-10:  44px;
+  --sp-12:  52px;
 
-  --tt-time-col-w:  76px;
+  /* Timetable size. Matches Renderer.SLOT_H in script.js. */
+  --tt-time-col-w:  80px;
   --tt-day-min-w:   148px;
   --tt-slot-h:      48px;
-  --tt-radius:      2px;
+  --tt-radius:      4px;
+
+  /* Fill for class blocks in light mode. Dark mode sets its own value below. */
+  --class-block-bg: rgba(255,255,255,0.92);
 
   --t-fast:   100ms ease;
-  --t-base:   180ms ease;
+  --t-base:   200ms ease;
   --t-slow:   300ms ease;
 }
 
-*,
-*::before,
+/* ── DARK MODE ────────────────────────────────────
+   Set data-theme="dark" on <body> to turn this on.
+   applyTheme() in script.js sets this attribute.
+   ──────────────────────────────────────────────────────────── */
+body[data-theme='dark'] {
+  --theme-background:        #050505;
+  --theme-surface:           #101010;
+  --theme-surface-strong:    #151515;
+  --theme-border:            #2a2a2a;
+  --theme-border-strong:     #3a3a3a;
+  --theme-border-hover:      #252525;
+  --theme-text:              #f4f4f4;
+  --theme-text-muted:        #c6c6c6;
+  --theme-text-dim:          #8d8d8d;
+  --theme-text-faint:        #5a5a5a;
+  --theme-accent:            #f4f4f4;
+  --theme-accent-soft:       rgba(244,244,244,0.08);
+  --btn-primary-text:        #000000;
+  --theme-success:           #7ecb8b;
+  --theme-warning:           #d8a300;
+  --theme-error:             #f16f6f;
+  /* Dark base for class blocks, so translucent subject colors show up. */
+  --class-block-bg:          rgba(20,20,20,0.92);
+
+  /* Repeat the --c-* names here with their dark values.
+     A --c-* name only takes its value from the block where it
+     is set, not from :root, so it must be set again in this block. */
+  --c-bg:             var(--theme-background);
+  --c-bg-raised:      var(--theme-surface);
+  --c-bg-surface:     var(--theme-surface-strong);
+  --c-bg-hover:       var(--theme-border-hover);
+  --c-border:         var(--theme-border);
+  --c-border-mid:     var(--theme-border-strong);
+  --c-border-strong:  var(--theme-text-faint);
+
+  --c-text:           var(--theme-text);
+  --c-text-muted:     var(--theme-text-muted);
+  --c-text-dim:       var(--theme-text-dim);
+  --c-text-faint:     var(--theme-text-faint);
+
+  --c-accent:         var(--theme-accent);
+  --c-accent-hover:   #e8e8e8;
+}
+
+/* ── RESET & BASE ───────────────────────────────────────────── */
+*,*::before,
 *::after {
   box-sizing: border-box;
   margin:     0;
@@ -75,16 +155,24 @@ html {
   font-size: 16px;
 }
 
+html, body {
+  min-height: 100%;
+  height: 100%;
+}
+
 body {
   background:  var(--c-bg);
   color:       var(--c-text);
   font-family: var(--f-sans);
   font-size:   var(--fs-base);
-  line-height: 1.55;
-  height:      100dvh;
-  overflow:    hidden;
+  line-height: 1.6;
+  overflow:    auto;
   display:     flex;
   flex-direction: column;
+}
+
+button, .textarea, .btn-format-help {
+  font-size:   var(--fs-sm);
 }
 
 @media (max-width: 1079px) {
@@ -105,6 +193,7 @@ body {
 ::-webkit-scrollbar-thumb { background: var(--c-border-strong); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--c-text-dim); }
 
+/* ── HEADER ─────────────────────────────────────────────────── */
 .header {
   display:        flex;
   align-items:    center;
@@ -167,11 +256,12 @@ body {
   align-items: center;
 }
 
-.header__toggle-btn {
+.header__toggle-btn,
+.btn--ghost {
   display:        flex;
   align-items:    center;
   gap:            var(--sp-1);
-  padding:        var(--sp-1) var(--sp-3);
+  padding:        var(--sp-2) var(--sp-3);
   background:     transparent;
   border:         1px solid var(--c-border-mid);
   border-radius:  var(--tt-radius);
@@ -181,6 +271,13 @@ body {
   letter-spacing: var(--ls-wide);
   cursor:         pointer;
   transition:     all var(--t-fast);
+}
+
+.header__toggle-btn:hover,
+.btn--ghost:hover {
+  color:        var(--c-text);
+  border-color: var(--c-border-strong);
+  background:   var(--c-bg-hover);
 }
 
 .header__toggle-btn:hover {
@@ -193,11 +290,12 @@ body {
   .header__toggle-btn { display: none; }
 }
 
+/* ── APP LAYOUT ─────────────────────────────────────────────── */
 .app-layout {
   display:    flex;
   flex:       1;
   min-height: 0;
-  overflow:   hidden;
+  overflow:   visible;
 }
 
 @media (max-width: 1079px) {
@@ -207,6 +305,7 @@ body {
   }
 }
 
+/* ── INPUT PANEL ────────────────────────────────────────────── */
 .input-panel {
   width:          380px;
   min-width:      320px;
@@ -214,12 +313,12 @@ body {
   flex-shrink:    0;
   display:        flex;
   flex-direction: column;
-  gap:            var(--sp-3);
-  padding:        var(--sp-5) var(--sp-5);
+  gap:            var(--sp-2);
+  padding:        var(--sp-3) var(--sp-4);
   border-right:   1px solid var(--c-border);
   background:     var(--c-bg);
   overflow-y:     auto;
-  height:         calc(100dvh - 52px);
+  min-height:     0;
 }
 
 @media (max-width: 1079px) {
@@ -245,15 +344,16 @@ body {
   }
 }
 
+/* Label above the textarea, e.g. "INPUT". */
 .panel-label {
   font-family:    var(--f-mono);
   font-size:      var(--fs-2xs);
   font-weight:    600;
   letter-spacing: var(--ls-widest);
   color:          var(--c-text-dim);
-  padding-bottom: var(--sp-2);
+  padding-bottom: 5px;
   border-bottom:  1px solid var(--c-border);
-  margin-bottom:  var(--sp-1);
+  margin-bottom:  0;
 }
 
 .textarea-wrap {
@@ -285,31 +385,34 @@ body {
   padding:        0 4px;
 }
 
+/* ── TEXTAREA ───────────────────────────────────────────────── */
 .textarea {
   width:        100%;
-  min-height:   220px;
+  min-height:   160px;
   resize:       vertical;
-  padding:      var(--sp-3) var(--sp-3);
+  padding:      var(--sp-4);
   background:   var(--c-bg-surface);
-  border:       1px solid var(--c-border-mid);
+  border:       1px solid var(--c-border);
   border-radius: var(--tt-radius);
   color:        var(--c-text);
   font-family:  var(--f-mono);
   font-size:    var(--fs-sm);
-  line-height:  1.75;
+  line-height:  1.85;
   outline:      none;
-  transition:   border-color var(--t-base);
+  transition:   border-color var(--t-base), box-shadow var(--t-base);
   tab-size:     2;
+}
+
+.textarea:focus {
+  border-color: var(--c-accent);
+  box-shadow: 0 0 0 3px rgba(30,30,30,0.08);
 }
 
 .textarea::placeholder {
   color: var(--c-text-faint);
 }
 
-.textarea:focus {
-  border-color: var(--c-accent);
-}
-
+/* ── FORMAT GUIDE BUTTON & ACTIONS ROW ─────────────────────── */
 .format-help-row {
   display:     flex;
   align-items: center;
@@ -384,8 +487,9 @@ body {
 
 .btn--primary {
   background:   var(--c-accent);
-  color:        #000;
+  color:        var(--btn-primary-text);
   border-color: var(--c-accent);
+  box-shadow:   inset 0 0 0 1px rgba(255,255,255,0.08);
 }
 
 .btn--primary:hover:not(:disabled) {
@@ -432,11 +536,11 @@ body {
 
 .btn--export {
   background:   var(--c-bg-surface);
-  color:        var(--c-text-muted);
+  color:        var(--c-text);
   border-color: var(--c-border);
-  font-size:    var(--fs-2xs);
-  min-height:   34px;
-  padding:      0 var(--sp-3);
+  font-size:    var(--fs-xs);
+  min-height:   36px;
+  padding:      0 var(--sp-4);
 }
 
 .btn--export:hover:not(:disabled) {
@@ -513,11 +617,16 @@ body {
 .parse-count--ok   { color: var(--c-green);  border-color: rgba(168,240,64,0.3);  background: var(--c-green-dim); }
 .parse-count--warn { color: var(--c-amber);  border-color: rgba(240,192,64,0.3);  background: var(--c-amber-dim); }
 
+/* ── WARNINGS BOX ───────────────────────────────────────────── 
+   Placed at the bottom of the input panel (after status-row)
+   so it never pushes up or overlaps the textarea.
+   ──────────────────────────────────────────────────────────── */
 .warnings-box {
   background:   var(--c-red-dim);
   border:       1px solid rgba(240,68,68,0.25);
   border-radius: var(--tt-radius);
   padding:      var(--sp-2) var(--sp-3);
+  margin:       var(--sp-2) 0;
 }
 
 .warnings-box__title {
@@ -549,6 +658,7 @@ body {
   font-weight:  700;
 }
 
+/* ── OUTPUT PANEL ───────────────────────────────────────────── */
 .output-panel {
   flex:           1;
   display:        flex;
@@ -556,7 +666,7 @@ body {
   min-width:      0;
   min-height:     0;
   background:     var(--c-bg-raised);
-  overflow:       hidden;
+  overflow:       visible;
 }
 
 @media (max-width: 1079px) {
@@ -594,12 +704,14 @@ body {
 .timetable-wrapper {
   flex:             1;
   min-height:       0;
+  height:           100%;
   overflow:         auto;
   scrollbar-gutter: stable;
   position:         relative;
-  background:       var(--c-bg);
-  box-shadow: inset 0 -2px 8px rgba(0,0,0,0.25),
-              inset -2px 0 8px rgba(0,0,0,0.15);
+  background:       var(--c-bg-raised);
+  border:           1px solid var(--c-border);
+  border-radius:    12px;
+  box-shadow:       0 12px 40px rgba(0,0,0,0.05);
 }
 
 .timetable-wrapper::-webkit-scrollbar {
@@ -661,6 +773,7 @@ body {
   line-height:    1.6;
 }
 
+/* ── TIMETABLE GRID ─────────────────────────────────────────── */
 #timetable {
   position:   relative;
   width:      max-content;
@@ -783,14 +896,16 @@ body {
   border-top-style: solid;
 }
 
+/* Current-time marker. script.js places this inside today's
+   day column only, so left/right span just that column. */
 .tt-now-line {
   position:    absolute;
   left:        0;
   right:       0;
   height:      2px;
-  background:  transparent !important;
+  background:  #e74c3c;
   z-index:     30;
-  display:     none !important;
+  display:     none;
   pointer-events: none;
 }
 
@@ -798,28 +913,36 @@ body {
   display: none !important;
 }
 
+/* ── CLASS BLOCKS ─────────────────────────────────────────────
+   These are base styles only. JS (Renderer) sets the background,
+   border color, and border-left width for each subject.
+   --class-block-bg is the fallback color under those: white in
+   light mode, near-black in dark mode.
+   ──────────────────────────────────────────────────────────── */
 .class-block {
   position:        absolute;
-  border:          1px solid;
-  border-radius:   var(--tt-radius);
-  padding:         5px 6px 4px;
+  border:          1px solid rgba(0,0,0,0.1);
+  border-radius:   10px;
+  padding:         10px 12px 10px 12px;
   overflow:        hidden;
   display:         flex;
   flex-direction:  column;
-  gap:             1px;
+  gap:             4px;
   cursor:          default;
   z-index:         5;
   transition:      transform var(--t-fast),
                    box-shadow var(--t-fast),
                    z-index 0s;
   outline:         none;
+  /* This token switches to a dark value in dark mode. */
+  background:      var(--class-block-bg);
 }
 
 .class-block:hover,
 .class-block:focus-visible {
-  transform:  scale(1.012) translateY(-1px);
+  transform:  translateY(-1px);
   z-index:    20;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px var(--block-color, #888);
+  box-shadow: 0 18px 40px rgba(0,0,0,0.08);
 }
 
 .class-block:focus-visible {
@@ -893,6 +1016,7 @@ body {
   text-overflow: ellipsis;
 }
 
+/* ── FORMAT GUIDE MODAL ─────────────────────────────────────── */
 .modal-backdrop {
   position:   fixed;
   inset:      0;
@@ -1025,6 +1149,7 @@ body {
   color:          var(--c-text-muted);
 }
 
+/* ── FOOTER ─────────────────────────────────────────────────── */
 .footer {
   display:        flex;
   align-items:    center;
@@ -1048,6 +1173,7 @@ body {
   font-family: var(--f-mono);
 }
 
+/* ── PRINT STYLES ───────────────────────────────────────────── */
 @media print {
   *       { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body    { background: #fff; color: #000; }
@@ -1098,6 +1224,8 @@ body {
   .tt-now-line { display: none !important; }
 }
 
+/* ── ACCESSIBILITY ──────────────────────────────────────────── */
+/* Disable all transitions and animations for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition:       none !important;

@@ -1,9 +1,21 @@
+// ============================================================
+// SCHEDGEN v2.1 — Main Script
+// Modules:
+//   Parser          — reads raw text, builds structured data
+//   OverlapResolver — assigns sub-columns to overlapping classes
+//   Renderer        — builds the timetable DOM
+//   Exporter        — PNG / PDF / HTML / clipboard / print
+//   UI wiring       — events, theme, storage, status
+// ============================================================
 (() => {
   'use strict';
 
+  // localStorage keys. Do not change these. A change loses saved user data.
   const STORAGE_KEY   = 'schedgen_v2_input';
   const AUTOGEN_KEY   = 'schedgen_v2_autogen';
-  const VERSION       = 'v2.0';
+  const THEME_KEY     = 'schedgen_v2_theme';
+  const VERSION       = 'v2.1';   // shown in header and export banner
+  const DEFAULT_THEME = 'light';  // used when no saved preference exists
 
   const DAY_NAMES = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
@@ -22,15 +34,17 @@
     Thursday:'THU', Friday:'FRI', Saturday:'SAT', Sunday:'SUN',
   };
 
+  // Eight accent colors, one per subject code (see hashCode below).
+  // The same code always gets the same color.
   const SUBJECT_COLORS = [
-    '#e8571a',
-    '#57b8ff',
-    '#b8ff57',
-    '#ff5797',
-    '#ffd557',
-    '#57ffd5',
-    '#d557ff',
-    '#ff8c57',
+    '#e8571a', // orange
+    '#57b8ff', // sky blue
+    '#b8ff57', // lime
+    '#ff5797', // magenta
+    '#ffd557', // amber
+    '#57ffd5', // teal
+    '#d557ff', // violet
+    '#ff8c57', // coral
   ];
 
   const EXAMPLE_INPUT = `Monday
@@ -56,12 +70,14 @@ Friday
 • MATH-101 College Algebra: 10:00 AM - 12:00 PM (RM 204)
 • PE-101 Physical Education: 1:00 PM - 2:30 PM (GYM)`;
 
+  // Central state object. All modules read and write it.
   const state = {
-    rawInput:    '',
-    parsedData:  null,
-    hasSchedule: false,
-    autoGenerate: false,
-    autoGenTimer: null,
+    rawInput:     '',      // current textarea content
+    parsedData:   null,    // result of Parser.parseSchedule()
+    hasSchedule:  false,   // true when a timetable is rendered
+    autoGenerate: false,   // user auto-generate toggle preference
+    autoGenTimer: null,    // debounce timer handle for auto-generate
+    theme:        DEFAULT_THEME, // 'light' or 'dark'
   };
 
   const $ = (sel, ctx) => (ctx || document).querySelector(sel);
@@ -91,11 +107,17 @@ Friday
     get toggleInputBtn()  { return $('#toggleInputBtn'); },
     get warningsBox()     { return $('#warningsBox'); },
     get warningsList()    { return $('#warningsList'); },
-    get currentTimeBar()  { return $('#currentTimeBar'); },
+    get btnThemeToggle()  { return $('#btnThemeToggle'); },
   };
 
+  // ---------------------------------------------------------------------------
+  // Parser module
+  // Reads plain text and builds a schedule object with days, classes,
+  // times, rooms, and warnings.
+  // ---------------------------------------------------------------------------
   const Parser = (() => {
 
+    // Parse a single time string into minutes since midnight.
     function parseTimeSingle(str) {
       if (!str) return null;
       str = str.trim();
@@ -129,7 +151,11 @@ Friday
       return null;
     }
 
+    // Guess AM/PM when the input has none.
+    // If end time is at or before start time, and start is before noon,
+    // treat end as PM. Example: "8 - 5" becomes 8 AM to 5 PM.
     function guessAmPm(startMin, endMin, rawStart, rawEnd) {
+      // Skip the guess when the input already has AM or PM.
       const hasAmPm = /AM|PM/i.test(rawStart) || /AM|PM/i.test(rawEnd);
       if (hasAmPm) return { startMin, endMin };
 
@@ -157,15 +183,18 @@ Friday
       return `${h}:${String(m).padStart(2, '0')} ${period}`;
     }
 
+    // djb2 hash. Turns a string into a stable unsigned 32-bit integer.
+    // This picks the same color slot for the same subject code every time.
     function hashCode(str) {
       let h = 5381;
       for (let i = 0; i < str.length; i++) {
         h = ((h << 5) + h) ^ str.charCodeAt(i);
-        h = h >>> 0;
+        h = h >>> 0; // force an unsigned 32-bit integer
       }
       return h;
     }
 
+    // Picks one of the SUBJECT_COLORS for a subject code.
     function colorForCode(code) {
       return SUBJECT_COLORS[hashCode(code.toUpperCase()) % SUBJECT_COLORS.length];
     }
@@ -175,7 +204,10 @@ Friday
       return DAY_ALIASES[key] || null;
     }
 
+    // Locate a time range (e.g. "8:00 AM - 11:00 AM") anywhere in a line.
+    // Returns start/end minutes plus the text before and after the range.
     function extractTimeRange(str) {
+      // T matches one time token: digits, optional :mm, optional AM/PM
       const T = '(\\d{1,2}(?::\\d{2})?\\s*(?:AM|PM)?)';
       const SEP = '\\s*[-–—]\\s*';
       const pattern = new RegExp(T + SEP + T, 'i');
@@ -204,6 +236,7 @@ Friday
       return { startMin, endMin, rawStart, rawEnd, beforeTime, afterTime };
     }
 
+    // Parse a single class line into a structured class object.
     function parseClassLine(line) {
       let cleaned = line.replace(/^[\s•\-\*·▸►→]+/, '').trim();
       if (!cleaned) return null;
@@ -259,6 +292,7 @@ Friday
       };
     }
 
+    // Parse the entire schedule text into day groups and class entries.
     function parseSchedule(rawText) {
       const lines    = rawText.split('\n');
       const days     = [];
@@ -302,6 +336,7 @@ Friday
         }
       }
 
+      // Remove empty day blocks and keep canonical weekday order.
       const filteredDays = days
         .filter(d => d.classes.length > 0)
         .sort((a, b) => DAY_NAMES.indexOf(a.day) - DAY_NAMES.indexOf(b.day));
@@ -312,21 +347,31 @@ Friday
     return { parseSchedule, formatTime, parseTimeSingle, colorForCode };
   })();
 
+  // ---------------------------------------------------------------------------
+  // OverlapResolver module
+  // Assigns each class to a sub-column when classes overlap in the same day.
+  // ---------------------------------------------------------------------------
   const OverlapResolver = (() => {
 
+    // Greedy column assignment. Sets _overlapCol (column index) and
+    // _overlapTotal (columns needed for the day) on each class.
+    // Classes that do not overlap share column 0.
     function resolve(classes) {
       if (!classes.length) return classes;
 
+      // Sort by start time. For ties, put the longer class first.
       const sorted = [...classes].sort((a, b) => {
         if (a.startMinutes !== b.startMinutes)
           return a.startMinutes - b.startMinutes;
         return (b.endMinutes - b.startMinutes) - (a.endMinutes - a.startMinutes);
       });
 
+      // active[col] holds the end time of the last class in that column.
       const active = [];
 
       for (const cls of sorted) {
         let placed = false;
+        // Use the first column whose last class has already ended.
         for (let col = 0; col < active.length; col++) {
           if (active[col] <= cls.startMinutes) {
             cls._overlapCol = col;
@@ -335,12 +380,14 @@ Friday
             break;
           }
         }
+        // No open column. Add a new one.
         if (!placed) {
           cls._overlapCol = active.length;
           active.push(cls.endMinutes);
         }
       }
 
+      // The Renderer needs the total column count to set each block's width.
       const totalCols = active.length;
       for (const cls of sorted) {
         cls._overlapTotal = totalCols;
@@ -352,10 +399,16 @@ Friday
     return { resolve };
   })();
 
+  // ---------------------------------------------------------------------------
+  // Renderer module
+  // Builds the timetable DOM, grid lines, time labels, and class blocks.
+  // ---------------------------------------------------------------------------
   const Renderer = (() => {
 
     const SLOT_H = 48;
 
+    // Find the visible time window — rounded to the nearest 30-min slot,
+    // with one 30-min buffer above and below the earliest/latest class.
     function getTimeRange(days) {
       let min = Infinity;
       let max = -Infinity;
@@ -377,29 +430,29 @@ Friday
       return `rgba(${r},${g},${b},${alpha})`;
     }
 
+    // Build the accessible tooltip text for each class block.
     function buildTooltip(cls) {
       return `${cls.code} — ${cls.name}\n${cls.startTime} – ${cls.endTime}\n${cls.room} · ${cls.type}`;
     }
 
-    function updateCurrentTimeLine(minTime, maxTime, days) {
-      const bar = DOM.currentTimeBar;
-      if (!bar) return;
+    // Draw the "now" line inside today's column only.
+    // If today is not on the grid, or the current time is off-grid, draw nothing.
+    function updateCurrentTimeLine(minTime, maxTime, todayCol) {
+      if (!todayCol) return;
 
       const now     = new Date();
-      const nowDay  = now.toLocaleDateString('en-US', { weekday: 'long' });
       const nowMins = now.getHours() * 60 + now.getMinutes();
+      if (nowMins < minTime || nowMins > maxTime) return;
 
-      const dayIdx = days.findIndex(d => d.day === nowDay);
-      if (dayIdx === -1 || nowMins < minTime || nowMins > maxTime) {
-        bar.style.display = 'none';
-        return;
-      }
-
-      const topPx = ((nowMins - minTime) / 30) * SLOT_H;
-      bar.style.display = 'block';
-      bar.style.top     = `${topPx}px`;
+      const bar = document.createElement('div');
+      bar.id        = 'currentTimeBar';
+      bar.className = 'tt-now-line';
+      bar.setAttribute('aria-hidden', 'true');
+      bar.style.top = `${((nowMins - minTime) / 30) * SLOT_H}px`;
+      todayCol.appendChild(bar);
     }
 
+    // Render the timetable grid and all class blocks into the DOM.
     function renderTimetable(parsedData) {
       const { days } = parsedData;
       if (!days.length) return;
@@ -469,12 +522,16 @@ Friday
       daysContainer.className = 'tt-days-container';
       daysContainer.setAttribute('role', 'grid');
 
+      const nowDay = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+      let todayCol = null;
+
       for (let di = 0; di < days.length; di++) {
         const day    = days[di];
         const dayCol = document.createElement('div');
         dayCol.className = 'tt-day-col';
         dayCol.setAttribute('role', 'row');
         dayCol.dataset.day = day.day;
+        if (day.day === nowDay) todayCol = dayCol;
 
         for (const slot of slots) {
           const gl = document.createElement('div');
@@ -490,6 +547,8 @@ Friday
           const isLab     = cls.type === 'Lab';
           const topPx     = ((cls.startMinutes - minTime) / 30) * SLOT_H;
           const heightPx  = Math.max(((cls.endMinutes - cls.startMinutes) / 30) * SLOT_H, 28);
+          // Short blocks (<52px) hide the subject name and meta row to avoid clipping.
+          // Tiny blocks (<36px) also hide the name — only the code badge remains visible.
           const isShort   = heightPx < 52;
           const isTiny    = heightPx < 36;
 
@@ -584,19 +643,12 @@ Friday
       }
 
       body.appendChild(daysContainer);
-
-      const ctBar = document.createElement('div');
-      ctBar.id        = 'currentTimeBar';
-      ctBar.className = 'tt-now-line';
-      ctBar.setAttribute('aria-hidden', 'true');
-      daysContainer.appendChild(ctBar);
-
       timetableEl.appendChild(body);
 
       DOM.timetable.style.display     = 'block';
       DOM.timetableEmpty.style.display = 'none';
 
-      updateCurrentTimeLine(minTime, maxTime, days);
+      updateCurrentTimeLine(minTime, maxTime, todayCol);
     }
 
     function clearTimetable() {
@@ -608,6 +660,10 @@ Friday
     return { renderTimetable, clearTimetable, getTimeRange };
   })();
 
+  // ---------------------------------------------------------------------------
+  // Exporter module
+  // Handles PNG, PDF, HTML export and clipboard copy of the rendered timetable.
+  // ---------------------------------------------------------------------------
   const Exporter = (() => {
 
     const HEADER_TEXT = `SCHEDGEN ${VERSION}  ·  VISUAL TIMETABLE EXPORT`;
@@ -629,17 +685,16 @@ Friday
       await new Promise(r => setTimeout(r, 100));
 
       try {
-        const fullW = el.scrollWidth;
+          const fullW = el.scrollWidth;
         const fullH = el.scrollHeight;
+        const themeDark = state.theme === 'dark';
 
         const canvas = await html2canvas(el, {
-          backgroundColor: '#0d0d0d',
+          backgroundColor: themeDark ? '#101010' : '#ffffff',
           scale:           2,
           useCORS:         true,
           allowTaint:      true,
           logging:         false,
-          scrollX:         -window.scrollX,
-          scrollY:         -window.scrollY,
           x:               0,
           y:               0,
           width:           fullW,
@@ -667,28 +722,34 @@ Friday
       out.width  = totalW;
       out.height = totalH;
       const ctx  = out.getContext('2d');
+      const themeDark = state.theme === 'dark';
 
-      ctx.fillStyle = '#111111';
+      ctx.fillStyle = themeDark ? '#101010' : '#f0f0f0';
       ctx.fillRect(0, 0, totalW, headerH);
 
-      ctx.fillStyle  = '#f0f0f0';
-      ctx.font       = `bold ${28}px "IBM Plex Mono", monospace`;
+      ctx.fillStyle    = themeDark ? '#f4f4f4' : '#191919';
+      const titleText  = 'SCHEDGEN';
+      ctx.font         = `bold 28px "IBM Plex Mono", monospace`;
       ctx.textBaseline = 'middle';
-      ctx.fillText('SCHEDGEN', 32, headerH / 2);
+      ctx.fillText(titleText, 32, headerH / 2);
+      // Measure the title now, before the font changes. A later measure
+      // would use the wrong font and place the version text too close.
+      const titleWidth = ctx.measureText(titleText).width;
 
-      ctx.fillStyle = '#888888';
-      ctx.font      = `${18}px "IBM Plex Mono", monospace`;
-      ctx.fillText(VERSION, 32 + ctx.measureText('SCHEDGEN').width + 16, headerH / 2);
+      ctx.fillStyle = themeDark ? '#cccccc' : '#888888';
+      ctx.font      = `16px "IBM Plex Mono", monospace`;
+      ctx.fillText(VERSION, 32 + titleWidth + 10, headerH / 2);
 
       const dateStr = new Date().toLocaleDateString('en-US', {
         weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
       });
-      ctx.fillStyle   = '#555555';
+      ctx.fillStyle   = themeDark ? '#f4f4f4' : '#191919';
       ctx.font        = `${16}px "IBM Plex Mono", monospace`;
       ctx.textAlign   = 'right';
       ctx.fillText('Generated: ' + dateStr, totalW - 32, headerH / 2);
 
-      ctx.strokeStyle = '#2a2a2a';
+      // Match the divider color to the current theme.
+      ctx.strokeStyle = themeDark ? '#3a3a3a' : '#d0d0d0';
       ctx.lineWidth   = 2;
       ctx.beginPath();
       ctx.moveTo(0, headerH);
@@ -766,6 +827,12 @@ Friday
 
         const dateStr  = new Date().toLocaleString();
         const ttHTML   = DOM.timetable.outerHTML;
+        const isDark   = state.theme === 'dark';
+        const bodyBg   = isDark ? '#050505' : '#f4f3f1';
+        const textCol  = isDark ? '#f4f4f4' : '#191919';
+        const panelBg  = isDark ? '#101010' : '#ffffff';
+        const borderCol = isDark ? '#2a2a2a' : '#d8d6d3';
+        const captionCol = isDark ? '#c6c6c6' : '#5f5f5d';
 
         const html = `<!DOCTYPE html>
 <html lang="en">
@@ -779,20 +846,21 @@ Friday
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { -webkit-font-smoothing: antialiased; }
-    body { background: #0d0d0d; color: #f0f0f0; font-family: 'Space Grotesk', sans-serif; padding: 32px 24px; }
+    body { background: ${bodyBg}; color: ${textCol}; font-family: 'Space Grotesk', sans-serif; padding: 32px 24px; }
     .export-shell { max-width: 1400px; margin: 0 auto; }
-    .export-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #2a2a2a; }
-    .export-header__brand { font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; font-weight: 700; letter-spacing: 0.15em; color: #f0f0f0; }
-    .export-header__meta  { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; color: #555; letter-spacing: 0.05em; }
-    .timetable-wrapper { border: 1px solid #2a2a2a; overflow: auto; background: #0d0d0d; border-radius: 2px; }
+    .export-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid ${borderCol}; gap: 1rem; }
+    .export-header__brand { display: flex; align-items: baseline; gap: 0.5rem; font-family: 'IBM Plex Mono', monospace; font-size: 1.25rem; font-weight: 700; letter-spacing: 0.15em; color: ${textCol}; }
+    .export-header__brand span { font-size: 0.8rem; color: ${captionCol}; letter-spacing: 0.1em; }
+    .export-header__meta  { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: ${captionCol}; letter-spacing: 0.08em; }
+    .timetable-wrapper { border: 1px solid ${borderCol}; overflow: auto; background: ${panelBg}; border-radius: 2px; }
     #timetable { display: block !important; }
     ${cssText}
   </style>
 </head>
-<body>
+<body data-theme="${isDark ? 'dark' : 'light'}">
   <div class="export-shell">
     <div class="export-header">
-      <div class="export-header__brand">SCHEDGEN <span style="color:#555;font-size:0.75em">${VERSION}</span></div>
+      <div class="export-header__brand">SCHEDGEN <span>${VERSION}</span></div>
       <div class="export-header__meta">Generated: ${dateStr}</div>
     </div>
     <div class="timetable-wrapper">
@@ -854,6 +922,8 @@ Friday
     return { exportPNG, exportPDF, exportHTML, copyToClipboard, printSchedule };
   })();
 
+  // Update the status bar below the textarea.
+  // type is 'success' | 'warning' | 'error' | '' (neutral).
   function setStatus(text, type) {
     const el = DOM.statusText;
     if (!el) return;
@@ -861,15 +931,19 @@ Friday
     el.className   = 'status-text' + (type ? ` status-text--${type}` : '');
   }
 
+  // Enable or disable all five export buttons at once.
+  // Buttons are disabled until a valid schedule has been rendered.
   function setExportEnabled(enabled) {
     [DOM.btnExportPNG, DOM.btnExportPDF, DOM.btnExportHTML, DOM.btnExportCopy, DOM.btnPrint]
       .forEach(btn => { if (btn) btn.disabled = !enabled; });
   }
 
+  // Auto-save the textarea content so the user's schedule survives a page reload.
   function saveToStorage() {
     try { localStorage.setItem(STORAGE_KEY, DOM.textarea.value); } catch (_) {}
   }
 
+  // Restore textarea content from localStorage on page load.
   function loadFromStorage() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -880,6 +954,7 @@ Friday
     } catch (_) {}
   }
 
+  // Remove the saved input only. This does not clear the current textarea.
   function clearStorage() {
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
   }
@@ -985,33 +1060,71 @@ Friday
     DOM.textarea.value = EXAMPLE_INPUT;
     state.rawInput     = EXAMPLE_INPUT;
     saveToStorage();
-    setStatus('EXAMPLE LOADED — PRESS GENERATE OR CTRL+ENTER', '');
-    updateParseCount(0, 0);
     showWarnings([]);
+    handleGenerate();
   }
 
+  // Debounce: re-generate 500 ms after the user stops typing.
+  // The timer is cancelled and restarted on every keystroke.
   function scheduleAutoGenerate() {
     if (!state.autoGenerate) return;
     clearTimeout(state.autoGenTimer);
     state.autoGenTimer = setTimeout(handleGenerate, 500);
   }
 
+  function saveTheme(theme) {
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
+  }
+
+  function applyTheme(theme) {
+    // Set data-theme on <body>. CSS variables switch automatically.
+    document.body.setAttribute('data-theme', theme);
+
+    // The label shows the mode a click switches to, not the current mode.
+    if (DOM.btnThemeToggle) {
+      const nextTheme = theme === 'dark' ? 'light' : 'dark';
+      DOM.btnThemeToggle.textContent = nextTheme.toUpperCase();
+      DOM.btnThemeToggle.setAttribute('aria-label',
+        `Current theme: ${theme}. Click to switch to ${nextTheme}.`);
+    }
+
+    state.theme = theme;
+
+    // Redraw the timetable. Class-block colors are set inline in JS,
+    // so they need a fresh render to match the new theme.
+    if (state.hasSchedule && state.parsedData) {
+      Renderer.renderTimetable(state.parsedData);
+    }
+  }
+
+  function loadTheme() {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return saved === 'dark' ? 'dark' : DEFAULT_THEME;
+    } catch (_) {
+      return DEFAULT_THEME;
+    }
+  }
+
+  // Open the Format Guide modal and move focus inside for keyboard users.
   function openFormatModal() {
     const modal = DOM.formatModal;
     if (!modal) return;
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
-    DOM.modalClose && DOM.modalClose.focus();
+    DOM.modalClose && DOM.modalClose.focus(); // trap focus in modal
   }
 
+  // Close the Format Guide modal and return focus to the trigger button.
   function closeFormatModal() {
     const modal = DOM.formatModal;
     if (!modal) return;
     modal.setAttribute('hidden', '');
     modal.setAttribute('aria-hidden', 'true');
-    DOM.btnFormatHelp && DOM.btnFormatHelp.focus();
+    DOM.btnFormatHelp && DOM.btnFormatHelp.focus(); // restore focus
   }
 
+  // Show/hide the input panel on mobile (≤1079px) via a CSS height transition.
   function toggleInputPanel() {
     const panel = DOM.inputPanel;
     const btn   = DOM.toggleInputBtn;
@@ -1023,6 +1136,7 @@ Friday
     }
   }
 
+  // Attach all event listeners. init() calls this once.
   function bindEvents() {
     DOM.btnGenerate   && DOM.btnGenerate.addEventListener('click', handleGenerate);
     DOM.btnClear      && DOM.btnClear.addEventListener('click', handleClear);
@@ -1037,6 +1151,11 @@ Friday
     DOM.btnExportHTML && DOM.btnExportHTML.addEventListener('click', Exporter.exportHTML);
     DOM.btnExportCopy && DOM.btnExportCopy.addEventListener('click', Exporter.copyToClipboard);
     DOM.btnPrint      && DOM.btnPrint.addEventListener('click', Exporter.printSchedule);
+    DOM.btnThemeToggle && DOM.btnThemeToggle.addEventListener('click', () => {
+      const nextTheme = state.theme === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+      saveTheme(nextTheme);
+    });
 
     DOM.chkAutoGen && DOM.chkAutoGen.addEventListener('change', (e) => {
       state.autoGenerate = e.target.checked;
@@ -1075,6 +1194,8 @@ Friday
     });
   }
 
+  // Entry point. Runs once, when the DOM is ready.
+  // Restores saved state, binds events, and applies the saved theme.
   function init() {
     loadFromStorage();
     bindEvents();
@@ -1087,6 +1208,9 @@ Friday
         if (DOM.chkAutoGen) DOM.chkAutoGen.checked = true;
       }
     } catch (_) {}
+
+    const theme = loadTheme();
+    applyTheme(theme);
 
     if (DOM.textarea && DOM.textarea.value.trim()) {
       setStatus('INPUT RESTORED — PRESS GENERATE OR CTRL+ENTER', '');

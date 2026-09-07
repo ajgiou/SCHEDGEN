@@ -1,6 +1,8 @@
-# SCHEDGEN v2.0 — Visual Timetable Generator
+# SCHEDGEN v2.1 — Visual Timetable Generator
 
-> September 2026 update: Development is still happening, but at a slow pace. I've been making fixes and changing the formats to make them easier.
+> **PLAIN TEXT → VISUAL TIMETABLE**
+>
+> Turns a plain-text schedule into a weekly timetable. It supports a light theme and a dark theme, and it shows the current time on today's column. Export the result as PNG, PDF, or HTML, or print it directly.
 
 ---
 
@@ -10,39 +12,43 @@
 2. [Quick Start](#quick-start)
 3. [Input Format](#input-format)
 4. [Generating the Timetable](#generating-the-timetable)
-5. [Export Options](#export-options)
-6. [Overlap Resolution](#overlap-resolution)
-7. [Color Coding](#color-coding)
-8. [Storage & Auto-Generate](#storage--auto-generate)
-9. [Keyboard Shortcuts](#keyboard-shortcuts)
-10. [Accessibility](#accessibility)
-11. [Browser Compatibility](#browser-compatibility)
-12. [File Structure](#file-structure)
-13. [Dependencies](#dependencies)
-14. [Credits](#credits)
+5. [Theme (Light / Dark)](#theme-light--dark)
+6. [Current Time Line](#current-time-line)
+7. [Export Options](#export-options)
+8. [Overlap Resolution](#overlap-resolution)
+9. [Color Coding](#color-coding)
+10. [Storage & Auto-Generate](#storage--auto-generate)
+11. [Keyboard Shortcuts](#keyboard-shortcuts)
+12. [Accessibility](#accessibility)
+13. [Browser Compatibility](#browser-compatibility)
+14. [File Structure](#file-structure)
+15. [Dependencies](#dependencies)
+16. [Credits](#credits)
+17. [License](#license)
 
 ---
 
 ## Purpose
 
-SCHEDGEN converts a plain-text schedule into a professional, color-coded weekly timetable. No spreadsheets, no Google Calendar imports, no account required — just paste your text and click **GENERATE**.
+SCHEDGEN turns a plain-text schedule into a color-coded weekly timetable. It needs no spreadsheet, no calendar import, and no account. Paste the text and press **GENERATE**.
 
-Primary use cases:
-- Students organizing class schedules
-- Academic staff creating weekly teaching overviews
-- Anyone who receives schedules in plain-text email format
+Typical users:
+- Students who organize class schedules
+- Staff who build weekly teaching overviews
+- Anyone who gets a schedule as plain text in an email
 
 ---
 
 ## Quick Start
 
-1. Open `index.html` in any modern browser (Chrome, Firefox, Safari, Edge).
-2. Click **EXAMPLE** to load a sample schedule.
-3. Click **GENERATE** (or press `Ctrl+Enter`).
-4. View the rendered timetable on the right.
-5. Export via the buttons in the top-right of the output panel.
+1. Open `index.html` in a modern browser (Chrome, Firefox, Safari, or Edge).
+2. Press **EXAMPLE** to load a sample schedule.
+3. Press **GENERATE**, or use `Ctrl+Enter`.
+4. Use the theme button in the header to switch between light and dark mode.
+5. Check the timetable in the output panel on the right.
+6. Export the timetable with the buttons at the top of the output panel.
 
-No server, no installation, no internet required after the initial font/library load.
+The app needs no server and no install. After the first load of the fonts and export libraries, it works without internet access.
 
 ---
 
@@ -55,7 +61,7 @@ DayName
 • SubjectCode Subject Name: StartTime - EndTime (Room) [Type]
 ```
 
-Each **day block** starts with a day name on its own line, followed by one or more class entries.
+Each day block starts with a day name on its own line. One or more class lines follow it.
 
 ### Full Example
 
@@ -82,7 +88,7 @@ Friday
 
 ### Day Names
 
-Day headers are **case-insensitive** and support full names and abbreviations:
+Day names do not need a specific case. The parser accepts the full name and two shorter forms.
 
 | Full Name   | Abbreviation | Short |
 |-------------|-------------|-------|
@@ -96,29 +102,29 @@ Day headers are **case-insensitive** and support full names and abbreviations:
 
 ### Line Prefixes (optional)
 
-Class entries accept any of the following line prefixes, or none at all:
+A class line can start with any of these marks, or with none at all.
 
 ```
-• CC-102 ...      ← bullet character
-- CC-102 ...      ← hyphen/dash
+• CC-102 ...      ← bullet
+- CC-102 ...      ← hyphen
 * CC-102 ...      ← asterisk
 → CC-102 ...      ← arrow
-CC-102 ...        ← no prefix (plain text)
+CC-102 ...        ← no mark
 ```
 
 ### Time Formats
 
-The parser accepts a wide range of time formats:
+The parser accepts these time formats.
 
 ```
 8:00 AM - 11:00 AM    ← 12-hour with AM/PM (preferred)
 13:00 - 15:30         ← 24-hour
-8:00 - 11:00          ← 24-hour (ambiguous — treated as morning)
-8 - 11                ← bare hours (smart AM/PM guess applied)
-8:30-11:00            ← no spaces around separator
+8:00 - 11:00          ← 24-hour, no AM/PM (read as morning)
+8 - 11                ← hour only (the parser guesses AM/PM)
+8:30-11:00            ← no space around the dash
 ```
 
-**Smart AM/PM guessing:** When times are ambiguous (no AM/PM and hour ≤ 12), the parser checks if the end time is less than or equal to the start time. If so, it assumes the end time is PM. Otherwise, it treats both as the given values.
+**AM/PM guess:** When a time has no AM/PM mark and the hour is 12 or less, the parser checks the end time against the start time. If the end time is at or before the start time, the parser reads the end time as PM. Example: `8 - 5` becomes 8 AM to 5 PM.
 
 ### Optional Fields
 
@@ -127,24 +133,24 @@ The parser accepts a wide range of time formats:
 | Room     | `(Room Name)`   | `TBA`     |
 | Type     | `[Lab]` or `[Lecture]` | `Lecture` |
 
-Both fields are optional and may appear in any order at the end of the line (after the time range).
+Both fields are optional. Place them in any order after the time range.
 
-### Comments & Blank Lines
+### Comments and Blank Lines
 
 ```
-// This is a comment — ignored by parser
-# This too
+// This is a comment. The parser ignores it.
+# This is also a comment.
 
-Blank lines are ignored entirely.
+The parser ignores blank lines too.
 ```
 
 ### Parser Rules Summary
 
-- Subject **code** = first token starting with a letter, may contain letters, digits, hyphens, underscores (e.g., `CC-102`, `MATH101`, `PE_101`).
-- Subject **name** = everything between the code and the time range (colons/dashes stripped from boundaries).
-- Names containing colons are supported because the time range is detected by a pattern match, not by splitting on the first colon.
-- Malformed lines that cannot be parsed generate a **warning** shown in the warnings box below the textarea.
-- Days with no valid classes are excluded from the rendered timetable.
+- The subject **code** is the first token that starts with a letter. It may hold letters, digits, hyphens, and underscores (for example, `CC-102`, `MATH101`, `PE_101`).
+- The subject **name** is the text between the code and the time range.
+- A name may hold a colon. The parser finds the time range by pattern, not by the first colon in the line.
+- A line the parser cannot read produces a warning. The warning shows in the warnings box below the textarea.
+- A day with no valid classes does not appear in the timetable.
 
 ---
 
@@ -152,85 +158,106 @@ Blank lines are ignored entirely.
 
 ### Manual Generation
 
-1. Enter or paste your schedule text in the **SCHEDULE DATA** textarea.
-2. Press the **GENERATE** button or use `Ctrl+Enter` (`Cmd+Enter` on Mac).
+1. Type or paste the schedule text in the **SCHEDULE DATA** box.
+2. Press **GENERATE**, or use `Ctrl+Enter` (`Cmd+Enter` on Mac).
 3. The timetable renders in the output panel on the right.
 
 ### Auto-Generate
 
-Enable the **AUTO-GENERATE** checkbox to have the timetable automatically update 500ms after you stop typing. This is useful for rapid iteration but may feel slow with large inputs — disable it and use `Ctrl+Enter` instead.
+Turn on the **AUTO-GENERATE** checkbox to update the timetable 500 ms after you stop typing. This helps with fast iteration. On large inputs it can feel slow. Turn it off and use `Ctrl+Enter` instead if that happens.
 
 ### Status Indicators
 
 The status line below the textarea shows:
-- Number of classes parsed
-- Number of days
-- Number of parse warnings
-- Color-coded: green (success), amber (warnings), red (error)
+- The number of classes parsed
+- The number of days
+- The number of parse warnings
+- A color for the result: green for success, amber for warnings, red for an error
 
-The **parse count badge** next to the status shows a quick `N classes · N warn` summary.
+The parse count badge next to the status line shows a short `N classes · N warn` summary.
+
+---
+
+## Theme (Light / Dark)
+
+The theme button sits at the top right of the header. Its label always names the mode you get **after** you press it, not the current mode. So while the app is in light mode, the button reads **DARK**. Press it to switch to dark mode, and the label then reads **LIGHT**.
+
+The app saves your choice to `localStorage` under the key `schedgen_v2_theme` and applies it again on your next visit.
+
+Colors for both modes come from CSS custom properties in `style.css`:
+- A set of `--theme-*` tokens holds the raw colors for each mode (background, text, borders, accent, and status colors).
+- A set of `--c-*` names is a short alias for those tokens. Most rules in the file use the short `--c-*` names.
+- The default (light) values live in `:root`. The dark values live in a `body[data-theme='dark']` block, which the theme button turns on and off.
+- Both the `--theme-*` tokens and the `--c-*` names are set again inside the dark block. A `--c-*` name takes its value from the block where it is set, not from `:root`, so the dark block must set both layers for the theme switch to reach every element.
+
+---
+
+## Current Time Line
+
+While the current day is on the timetable, and the current time falls inside the visible time range, a red line marks the current time on that day's column. The line does not appear on other days, and it does not appear if the current time falls before or after the visible range.
+
+The app draws this line once, when it renders the timetable. It does not move the line while the page stays open. Press **GENERATE** again to update it.
 
 ---
 
 ## Export Options
 
-All export buttons are located in the **output panel header**. They are disabled until a schedule is generated.
+Find the export buttons in the output panel header. They stay disabled until a timetable exists.
 
 ### PNG — Save as Image
 
-Saves a high-resolution PNG (2× pixel density) of the full timetable, including a header bar with the SCHEDGEN logo and generation date. The export captures the **entire** timetable even if it extends beyond the visible viewport.
+Saves a PNG of the full timetable at twice the normal pixel density. The image includes a header bar with the SCHEDGEN name and the generation date. The export captures the whole timetable, even the part outside the visible viewport.
 
 File name: `schedgen-YYYYMMDD.png`
 
 ### PDF — Save as PDF Document
 
-Generates a PDF with the timetable image centered on an A4 page. Orientation (landscape/portrait) is automatically selected based on the timetable's aspect ratio — wide timetables use landscape, tall ones use portrait.
+Builds a PDF with the timetable image centered on an A4 page. The app picks landscape or portrait orientation based on the width and height of the timetable.
 
 File name: `schedgen-YYYYMMDD.pdf`
 
 ### HTML — Save as Standalone HTML
 
-Exports a self-contained `.html` file with all styles embedded, Google Fonts loaded via CDN, and the timetable structure preserved. Open it in any browser without needing SCHEDGEN.
+Saves a single `.html` file with all styles inside it, fonts loaded from Google Fonts, and the timetable structure intact. Open this file in any browser. It does not need SCHEDGEN.
 
 File name: `schedgen-YYYYMMDD.html`
 
 ### COPY — Copy to Clipboard
 
-Copies the timetable as a PNG image to the system clipboard using the Clipboard API. Falls back to a file download if the browser does not support `ClipboardItem`.
+Copies the timetable as a PNG image to the system clipboard, through the Clipboard API. If the browser does not support `ClipboardItem`, the app downloads a file instead.
 
-> **Note:** Clipboard write requires a secure context (HTTPS or localhost). On some browsers (Firefox), you may need to grant clipboard permissions.
+> **Note:** Clipboard write needs a secure context (HTTPS or `localhost`). Some browsers, such as Firefox, may ask you to allow clipboard access.
 
 ### PRINT
 
-Opens the browser's print dialog with print-specific CSS applied:
-- Input panel, header, footer, and export bar are hidden.
-- Timetable fills the page.
-- Colors are preserved (`print-color-adjust: exact`).
+Opens the browser print dialog with print styles applied:
+- The input panel, header, footer, and export bar stay hidden.
+- The timetable fills the page.
+- Colors print as shown on screen (`print-color-adjust: exact`).
 
 ---
 
 ## Overlap Resolution
 
-When two or more classes on the same day have overlapping time ranges, SCHEDGEN uses an **interval-graph coloring algorithm** to resolve them:
+When two or more classes on the same day overlap in time, SCHEDGEN places them in side-by-side columns with this method.
 
-1. Classes are sorted by start time (longest duration first on ties).
-2. An "active columns" array tracks the end time of each column's last class.
-3. Each new class is assigned to the **lowest-numbered free column** (one where the current class starts at or after the previous class's end time).
-4. If no free column exists, a new column is created.
-5. The total number of columns for a day equals the **maximum number of simultaneously active classes** (the clique number of the interval graph).
+1. Sort the classes by start time. For a tie, place the longer class first.
+2. Track an "active columns" list. Each entry holds the end time of the last class placed in that column.
+3. Place each class in the lowest-numbered column where the last class has already ended.
+4. If no such column exists, open a new column.
+5. The number of columns for a day equals the largest number of classes active at the same time.
 
-This guarantees:
-- No two overlapping classes share the same sub-column.
-- Columns are used as efficiently as possible (minimum total columns).
-- Partial overlaps (A overlaps B but not C, while B overlaps C) are handled correctly.
+This method gives two guarantees.
+- No two overlapping classes share a column.
+- The timetable uses the smallest possible number of columns.
 
-Overlapping blocks are rendered with a **dashed border** to visually distinguish them from non-overlapping blocks.
+A class block that overlaps another one gets a dashed border, so you can spot it at a glance.
 
 ---
 
 ## Color Coding
 
-Each unique subject code receives a **deterministic color** from an 8-color palette using a hash function (djb2-variant). The same code always receives the same color across sessions and browsers.
+Each subject code gets one color from an 8-color set. A hash function (a djb2 variant) picks the color, so the same code always gets the same color, in any session or browser.
 
 ### Palette
 
@@ -247,10 +274,10 @@ Each unique subject code receives a **deterministic color** from an 8-color pale
 
 ### Block Styles
 
-- **Lab blocks:** Filled background (15% opacity of subject color) + solid left accent border (3px) + solid outer border. Badge has solid background for high contrast.
-- **Lecture blocks:** Very subtle background (7% opacity) + translucent outer border + solid left accent border. Badge is outlined.
-- **Short classes (< 52px height):** Only the subject code and type badge are shown. Full details appear in the native tooltip on hover.
-- **Tiny classes (< 36px height):** Only the type badge and code are shown.
+- **Lab blocks:** a filled background (15% of the subject color), a solid 3px left border, and a solid outer border. The type badge has a solid background for contrast.
+- **Lecture blocks:** a faint background (7% of the subject color), a translucent outer border, and a solid left border. The type badge has an outline only.
+- **Short blocks (under 52px tall):** show only the subject code and the type badge. Hover the block to see the full details in a tooltip.
+- **Tiny blocks (under 36px tall):** show only the type badge and the code.
 
 ---
 
@@ -258,17 +285,17 @@ Each unique subject code receives a **deterministic color** from an 8-color pale
 
 ### LocalStorage Auto-Save
 
-Your schedule text is automatically saved to `localStorage` under the key `schedgen_v2_input` as you type. It is restored when you return to the app.
+The app saves your schedule text to `localStorage` under the key `schedgen_v2_input` as you type, and restores it the next time you open the app.
 
 ### Clear Storage
 
-Click **CLEAR STORAGE** to remove the saved input from localStorage without clearing the textarea. This is useful if you want to start fresh next visit.
+Press **CLEAR STORAGE** to remove the saved input from `localStorage`. This does not clear the textarea for the current session. Use it when you want a clean slate on your next visit.
 
-> Note: **CLEAR** only clears the textarea for the current session. **CLEAR STORAGE** removes the persisted data.
+> **CLEAR** empties the textarea now. **CLEAR STORAGE** removes the saved copy for next time. The two buttons do different things.
 
 ### Auto-Generate Preference
 
-The auto-generate checkbox state is saved to `localStorage` under `schedgen_v2_autogen` and restored on load.
+The app saves the auto-generate checkbox state to `localStorage` under the key `schedgen_v2_autogen`, and restores it on load.
 
 ---
 
@@ -276,46 +303,46 @@ The auto-generate checkbox state is saved to `localStorage` under `schedgen_v2_a
 
 | Shortcut             | Action                          |
 |---------------------|---------------------------------|
-| `Ctrl+Enter`         | Generate timetable              |
-| `Cmd+Enter` (Mac)    | Generate timetable              |
+| `Ctrl+Enter`         | Generate the timetable              |
+| `Cmd+Enter` (Mac)    | Generate the timetable              |
 | `Escape`             | Close the Format Guide modal    |
-| `Tab`                | Navigate between interactive elements |
-| `Enter` / `Space`    | Activate focused class block (shows tooltip alert) |
+| `Tab`                | Move between interactive elements |
+| `Enter` / `Space`    | Activate a focused class block (shows the tooltip) |
 
 ---
 
 ## Accessibility
 
-SCHEDGEN v2.0 includes the following accessibility features:
+SCHEDGEN v2.1 includes these accessibility features.
 
-- **Semantic HTML**: Proper `<header>`, `<main>`, `<section>`, `<footer>`, `<dialog>` roles.
-- **ARIA labels**: All interactive elements have `aria-label` attributes. The timetable grid uses `role="grid"`, `role="row"`, and `role="gridcell"`.
-- **Live regions**: Status text and warnings use `aria-live="polite"` for screen reader announcements.
-- **Focus management**: Modal dialog traps focus correctly. Escape closes it and returns focus to the trigger button.
-- **Keyboard navigation**: All buttons and class blocks are keyboard-accessible.
-- **Skip link**: A "Skip to timetable" link appears on first Tab press.
-- **Reduced motion**: All transitions and animations are disabled when `prefers-reduced-motion: reduce` is set.
-- **Focus indicators**: All focusable elements have visible `focus-visible` outlines.
+- **Semantic HTML:** proper `<header>`, `<main>`, `<section>`, and `<footer>` elements, with roles where needed.
+- **ARIA labels:** every interactive element has an `aria-label`. The timetable grid uses `role="grid"`, `role="row"`, and `role="gridcell"`.
+- **Live regions:** the status text and the warnings box use `aria-live="polite"`, so a screen reader announces changes.
+- **Focus management:** the modal dialog traps focus while open. `Escape` closes it and returns focus to the button that opened it.
+- **Keyboard navigation:** you can reach every button and class block with the keyboard.
+- **Skip link:** a "Skip to timetable" link appears on the first `Tab` press.
+- **Reduced motion:** the app turns off transitions and animations when the system sets `prefers-reduced-motion: reduce`.
+- **Focus indicators:** every focusable element shows a visible `focus-visible` outline.
 
 ---
 
 ## Browser Compatibility
 
-SCHEDGEN v2.0 targets **modern evergreen browsers**:
+SCHEDGEN v2.1 targets current browser versions.
 
 | Browser            | Support |
 |-------------------|---------|
-| Chrome 90+         | ✅ Full  |
-| Firefox 90+        | ✅ Full  |
-| Safari 15+         | ✅ Full  |
-| Edge 90+           | ✅ Full  |
-| iOS Safari 15+     | ✅ Full  |
-| Opera 76+          | ✅ Full  |
+| Chrome 90+         | Full  |
+| Firefox 90+        | Full  |
+| Safari 15+         | Full  |
+| Edge 90+           | Full  |
+| iOS Safari 15+     | Full  |
+| Opera 76+          | Full  |
 
-**Known limitations:**
-- **Clipboard copy** (`navigator.clipboard.write`) requires HTTPS or `localhost`. On HTTP, it falls back to a file download.
-- Firefox may prompt for clipboard permissions on first use.
-- Very old browsers (IE11, pre-Chromium Edge) are not supported.
+**Known limits:**
+- Clipboard copy (`navigator.clipboard.write`) needs HTTPS or `localhost`. Over plain HTTP, the app downloads a file instead.
+- Firefox may ask for clipboard permission on first use.
+- The app does not support old browsers such as IE11 or pre-Chromium Edge.
 
 ---
 
@@ -323,35 +350,35 @@ SCHEDGEN v2.0 targets **modern evergreen browsers**:
 
 ```
 schedgen/
-├── index.html     ← Semantic HTML structure, no inline scripts or styles
-├── style.css      ← All styles (layout, timetable, blocks, modal, print)
-├── script.js      ← All JavaScript (Parser, OverlapResolver, Renderer, Exporter, UI)
+├── index.html     ← HTML structure. No inline scripts or styles.
+├── style.css      ← All styles: layout, timetable, blocks, modal, print, theme tokens
+├── script.js      ← All JavaScript: Parser, OverlapResolver, Renderer, Exporter, UI
 └── README.md      ← This file
 ```
 
-Everything runs from these four files. No build step, no `node_modules`, no server.
+These four files are all the app needs. There is no build step and no `node_modules` folder.
 
 ---
 
 ## Dependencies
 
-SCHEDGEN loads two CDN libraries for export functionality:
+SCHEDGEN loads two libraries from a CDN for export.
 
 | Library       | Version | CDN URL |
 |--------------|---------|---------|
 | html2canvas  | 1.4.1   | `https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js` |
 | jsPDF        | 2.5.1   | `https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js` |
 
-**For fully offline use:** Download these two `.js` files locally, update the `<script src="...">` paths in `index.html`, and load fonts via local copies or remove them (the app falls back to system monospace/sans fonts gracefully).
+**For fully offline use:** download both `.js` files, update the `<script src="...">` paths in `index.html`, and either host the fonts locally or remove the font links. Without the Google Fonts link, the app falls back to the system monospace and sans-serif fonts.
 
 ---
 
 ## Credits
 
-- **html2canvas** by Niklas von Hertzen — DOM-to-canvas rendering for PNG/PDF export.
-- **jsPDF** by the jsPDF Team — PDF generation in the browser.
-- **IBM Plex Mono** and **Space Grotesk** — Google Fonts (loaded via CDN).
-- Design language inspired by Nothing and Teenage Engineering product aesthetics: industrial monospaced type, dark minimal interface, high-contrast accents.
+- **html2canvas** by Niklas von Hertzen — renders the DOM to a canvas for PNG and PDF export.
+- **jsPDF** by the jsPDF Team — builds the PDF file in the browser.
+- **IBM Plex Mono** and **Space Grotesk** — Google Fonts, loaded from the CDN.
+- The visual style draws on Nothing and Teenage Engineering product design: industrial monospaced type, a minimal dark interface, and high-contrast accents.
 
 ---
 
