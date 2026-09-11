@@ -19,10 +19,9 @@
   <a class="skip-link" href="#timetableWrapper">Skip to timetable</a>
 
   <header class="header" role="banner">
-
     <div class="header__brand">
-      <span class="header__logo" aria-label="SCHEDGEN">SCHEDGEN</span>
-      <span class="header__version" aria-label="version 2.1">v2.1</span>
+      <h1 class="header__logo">SCHEDGEN</h1>
+      <span class="header__version" aria-label="version 2.2">v2.2</span>
     </div>
 
     <div class="header__divider" aria-hidden="true"></div>
@@ -34,7 +33,7 @@
         class="btn btn--ghost theme-toggle"
         id="btnThemeToggle"
         type="button"
-        aria-label="Toggle theme"
+        aria-label="Toggle dark mode"
       >DARK</button>
       <button
         class="header__toggle-btn"
@@ -44,18 +43,19 @@
         aria-expanded="true"
       >▲ HIDE INPUT</button>
     </div>
-
   </header>
 
-  <main class="app-layout" id="mainLayout">
+  <main class="app-layout" id="mainLayout" role="main">
 
     <section
       class="input-panel"
       id="inputPanel"
       aria-label="Schedule input"
+      role="region"
     >
 
       <div class="panel-label" aria-hidden="true">INPUT</div>
+      <h2 class="sr-only">Schedule input</h2>
 
       <div class="textarea-wrap">
         <label class="textarea-label" for="scheduleInput">
@@ -70,10 +70,11 @@
           autocomplete="off"
           autocorrect="off"
           autocapitalize="off"
-          aria-label="Schedule input. Enter day headers followed by class entries."
-          aria-describedby="warningsBox"
+          aria-label="Schedule input. Format: Day name, then class entries with time and room."
+          aria-describedby="warningsBox inputHelp"
           placeholder="Monday&#10;• CC-102 Computer Programming 1: 8:00 AM - 11:00 AM (COM LAB 1) [Lab]&#10;• MATH-101 College Algebra: 1:00 PM - 3:00 PM (RM 204)&#10;&#10;Tuesday&#10;• CC-101 Introduction to Computing: 9:00 AM - 12:00 PM (COM LAB 2) [Lab]&#10;• ENG-101 Technical Writing: 2:00 PM - 4:00 PM (RM 101) [Lecture]"
         ></textarea>
+        <div id="inputHelp" class="sr-only">Enter your schedule with day headers followed by class entries. Each class needs a code, name, time range, and optionally a room and type.</div>
       </div>
 
       <div class="format-help-row">
@@ -89,13 +90,13 @@
       </div>
 
       <div class="actions-row">
-  <button class="btn btn--primary" id="btnGenerate">GENERATE</button>
-  <button class="btn btn--secondary" id="btnClear">CLEAR</button>
-  <button class="btn btn--ghost" id="btnLoadExample">EXAMPLE</button>
-  <button class="btn btn--danger" id="btnClearStorage">
-    <span class="btn__icon" aria-hidden="true">⌫</span> CLEAR STORAGE
-  </button>
-</div>
+        <button class="btn btn--primary" id="btnGenerate" type="button">GENERATE</button>
+        <button class="btn btn--secondary" id="btnClear" type="button">CLEAR</button>
+        <button class="btn btn--ghost" id="btnLoadExample" type="button">EXAMPLE</button>
+        <button class="btn btn--danger" id="btnClearStorage" type="button">
+          <span class="btn__icon" aria-hidden="true">⌫</span> CLEAR STORAGE
+        </button>
+      </div>
 
       <div class="autogen-row">
         <label class="autogen-label" for="chkAutoGen">
@@ -108,17 +109,16 @@
         </label>
       </div>
 
-      <div class="status-row" role="status" aria-live="polite">
+      <div class="status-row" role="status" aria-live="polite" aria-atomic="false">
         <span class="status-text" id="statusText">READY — ENTER SCHEDULE DATA</span>
         <span class="parse-count" id="parseCount" aria-live="polite"></span>
       </div>
 
-      <!-- Warnings appear here, below all controls, so they never push up or cover the textarea -->
       <div
         class="warnings-box"
         id="warningsBox"
         role="alert"
-        aria-live="polite"
+        aria-live="assertive"
         hidden
       >
         <div class="warnings-box__title">PARSE WARNINGS</div>
@@ -131,11 +131,13 @@
       class="output-panel"
       id="outputPanel"
       aria-label="Generated timetable"
+      role="region"
     >
 
       <div class="output-header">
 
         <span class="output-header__label" aria-hidden="true">OUTPUT</span>
+        <h2 class="sr-only">Generated timetable</h2>
 
         <div class="export-bar" role="group" aria-label="Export options">
           <button
@@ -226,6 +228,8 @@
     role="dialog"
     aria-modal="true"
     aria-labelledby="modalTitle"
+    aria-describedby="modalDescription"
+    aria-hidden="true"
     hidden
   >
     <div class="modal">
@@ -240,7 +244,7 @@
         >✕ CLOSE</button>
       </div>
 
-      <div class="modal__body">
+      <div class="modal__body" id="modalDescription">
 
         <div class="modal-section">
           <div class="modal-section__heading">ACCEPTED FORMAT</div>
