@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="SCHEDGEN — Convert plain text schedules into visual weekly timetables. Export as PNG, PDF, or HTML.">
-  <title>SCHEDGEN</title>
+  <title>SCHEDGEN v3.0</title>
 
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -18,25 +18,25 @@
 
   <a class="skip-link" href="#timetableWrapper">Skip to timetable</a>
 
-  <header class="header" role="banner">
-    <div class="header__brand">
-      <h1 class="header__logo">SCHEDGEN</h1>
-      <span class="header__version" aria-label="version 2.2">v2.2</span>
+  <header class="app-header" role="banner">
+    <div class="app-header__brand">
+      <h1 class="app-header__logo">SCHEDGEN</h1>
+      <span class="app-header__version" aria-label="version 3.0">v3.0</span>
     </div>
 
-    <div class="header__divider" aria-hidden="true"></div>
+    <div class="app-header__divider" aria-hidden="true"></div>
 
-    <span class="header__tagline" aria-hidden="true">VISUAL TIMETABLE GENERATOR</span>
+    <span class="app-header__tagline" aria-hidden="true">VISUAL TIMETABLE GENERATOR</span>
 
-    <div class="header__right">
+    <div class="app-header__actions">
       <button
-        class="btn btn--ghost theme-toggle"
+        class="btn btn--ghost app-header__theme"
         id="btnThemeToggle"
         type="button"
         aria-label="Toggle dark mode"
       >DARK</button>
       <button
-        class="header__toggle-btn"
+        class="app-header__toggle-btn"
         id="toggleInputBtn"
         type="button"
         aria-controls="inputPanel"
@@ -60,24 +60,29 @@
       <div class="textarea-wrap">
         <label class="textarea-label" for="scheduleInput">
           SCHEDULE DATA
-          <span class="textarea-shortcut" aria-label="Keyboard shortcut: Control + Enter">Ctrl+↵</span>
+          <span class="textarea-shortcut" aria-label="Keyboard shortcut: Control + Enter">CTRL+↵</span>
         </label>
         <textarea
           id="scheduleInput"
           class="textarea"
-          rows="18"
+          rows="14"
           spellcheck="false"
           autocomplete="off"
           autocorrect="off"
           autocapitalize="off"
           aria-label="Schedule input. Format: Day name, then class entries with time and room."
           aria-describedby="warningsBox inputHelp"
-          placeholder="Monday&#10;• CC-102 Computer Programming 1: 8:00 AM - 11:00 AM (COM LAB 1) [Lab]&#10;• MATH-101 College Algebra: 1:00 PM - 3:00 PM (RM 204)&#10;&#10;Tuesday&#10;• CC-101 Introduction to Computing: 9:00 AM - 12:00 PM (COM LAB 2) [Lab]&#10;• ENG-101 Technical Writing: 2:00 PM - 4:00 PM (RM 101) [Lecture]"
+          placeholder="Monday
+• CC-102 Computer Programming 1: 8:00 AM - 11:00 AM (COM LAB 1) [Lab]
+• MATH-101 College Algebra: 1:00 PM - 3:00 PM (RM 204)
+
+Tuesday
+• CC-101 Introduction to Computing: 9:00 AM - 12:00 PM (COM LAB 2) [Lab]"
         ></textarea>
         <div id="inputHelp" class="sr-only">Enter your schedule with day headers followed by class entries. Each class needs a code, name, time range, and optionally a room and type.</div>
       </div>
 
-      <div class="format-help-row">
+      <div class="input-tools">
         <button
           class="btn-format-help"
           id="btnFormatHelp"
@@ -90,12 +95,10 @@
       </div>
 
       <div class="actions-row">
-        <button class="btn btn--primary" id="btnGenerate" type="button">GENERATE</button>
+        <button class="btn btn--primary actions-row__generate" id="btnGenerate" type="button">GENERATE</button>
         <button class="btn btn--secondary" id="btnClear" type="button">CLEAR</button>
-        <button class="btn btn--ghost" id="btnLoadExample" type="button">EXAMPLE</button>
-        <button class="btn btn--danger" id="btnClearStorage" type="button">
-          <span class="btn__icon" aria-hidden="true">⌫</span> CLEAR STORAGE
-        </button>
+        <button class="btn btn--secondary" id="btnLoadExample" type="button">EXAMPLE</button>
+        <button class="btn btn--danger" id="btnClearStorage" type="button">CLEAR STORAGE</button>
       </div>
 
       <div class="autogen-row">
@@ -146,9 +149,7 @@
             type="button"
             disabled
             aria-label="Save timetable as PNG image"
-          >
-            <span class="btn__icon" aria-hidden="true">↓</span> PNG
-          </button>
+          ><span class="btn__icon" aria-hidden="true">↓</span> PNG</button>
 
           <button
             class="btn btn--export"
@@ -156,9 +157,7 @@
             type="button"
             disabled
             aria-label="Save timetable as PDF document"
-          >
-            <span class="btn__icon" aria-hidden="true">↓</span> PDF
-          </button>
+          ><span class="btn__icon" aria-hidden="true">↓</span> PDF</button>
 
           <button
             class="btn btn--export"
@@ -166,9 +165,7 @@
             type="button"
             disabled
             aria-label="Save timetable as standalone HTML file"
-          >
-            <span class="btn__icon" aria-hidden="true">↓</span> HTML
-          </button>
+          ><span class="btn__icon" aria-hidden="true">↓</span> HTML</button>
 
           <button
             class="btn btn--export"
@@ -176,9 +173,7 @@
             type="button"
             disabled
             aria-label="Copy timetable image to clipboard"
-          >
-            <span class="btn__icon" aria-hidden="true">⎘</span> COPY
-          </button>
+          ><span class="btn__icon" aria-hidden="true">⎘</span> COPY</button>
 
           <button
             class="btn btn--export"
@@ -186,9 +181,7 @@
             type="button"
             disabled
             aria-label="Print timetable"
-          >
-            <span class="btn__icon" aria-hidden="true">⎙</span> PRINT
-          </button>
+          ><span class="btn__icon" aria-hidden="true">⎙</span> PRINT</button>
         </div>
 
       </div>
@@ -201,12 +194,12 @@
         tabindex="0"
       >
 
-        <div class="timetable-empty" id="timetableEmpty" aria-hidden="false">
+        <div class="timetable-empty" id="timetableEmpty">
           <div class="timetable-empty__glyph" aria-hidden="true">⬡</div>
           <div class="timetable-empty__text">NO SCHEDULE GENERATED</div>
           <div class="timetable-empty__hint">
-            Enter your schedule in the input panel and press GENERATE,
-            or load the example to see how it works.
+            Enter schedule data, press GENERATE or Ctrl+Enter,
+            or load the example.
           </div>
         </div>
 
@@ -287,9 +280,9 @@
           <div class="modal-section__heading">BLOCK TYPES</div>
           <div class="modal-legend" aria-label="Block type legend">
             <span class="modal-legend__badge modal-legend__badge--lab" aria-hidden="true">LAB</span>
-            <span class="modal-legend__desc">Laboratory — filled background, solid left border</span>
+            <span class="modal-legend__desc">Laboratory — filled badge, strong tint</span>
             <span class="modal-legend__badge modal-legend__badge--lec" aria-hidden="true">LEC</span>
-            <span class="modal-legend__desc">Lecture — subtle background, colored left border</span>
+            <span class="modal-legend__desc">Lecture — outlined badge, faint tint</span>
           </div>
         </div>
 
@@ -299,6 +292,8 @@
 
   <footer class="footer" role="contentinfo">
     <span class="footer__text">ajgiou</span>
+    <span class="footer__sep" aria-hidden="true">·</span>
+    <span class="footer__text">SCHEDGEN v3.0</span>
     <span class="footer__sep" aria-hidden="true">·</span>
     <span class="footer__text">html2canvas · jsPDF</span>
   </footer>
