@@ -1,5 +1,5 @@
 // ============================================================
-// SCHEDGEN v3.0 — Metro Monochrome
+// SCHEDGEN v3.1 — Metro Monochrome
 // Parser · OverlapResolver · Fitter · Renderer · Exporter · UI
 // ============================================================
 (() => {
@@ -11,7 +11,7 @@
   const AUTOGEN_KEY   = 'schedgen_v2_autogen';
   const THEME_KEY     = 'schedgen_v2_theme';
   const DEFAULT_THEME = 'light';
-  const VERSION       = 'v3.0';
+  const VERSION       = 'v3.1';
 
   const SLOT_H = 44;          // px per 30 min
 
@@ -66,12 +66,12 @@ Thursday
 
 Friday
 • MATH-101 College Algebra: 10:00 AM - 12:00 PM (RM 204)
-• PE-101 Physical Education: 1:00 PM - 2:30 PM (GYM)`;
+• PE-101 Physical Education: 1:00 PM - 2:30 PM (GYM)
+• SCI-101 Earth Science: 3:00 PM - 3:45 PM (RM 202) [Lecture]`;
 
   // ---------- state ----------
 
   const state = {
-    rawInput: '',
     parsedData: null,
     hasSchedule: false,
     autoGenerate: false,
@@ -82,34 +82,17 @@ Friday
     lastStatus: { text: 'READY — ENTER SCHEDULE DATA', type: '' },
   };
 
-  const $ = (sel) => document.querySelector(sel);
+  const DOM = {}; // element cache, filled once in cacheDom()
 
-  const DOM = {
-    get textarea()        { return $('#scheduleInput'); },
-    get btnGenerate()     { return $('#btnGenerate'); },
-    get btnClear()        { return $('#btnClear'); },
-    get btnClearStorage() { return $('#btnClearStorage'); },
-    get btnLoadExample()  { return $('#btnLoadExample'); },
-    get btnFormatHelp()   { return $('#btnFormatHelp'); },
-    get statusText()      { return $('#statusText'); },
-    get parseCount()      { return $('#parseCount'); },
-    get timetable()       { return $('#timetable'); },
-    get timetableEmpty()  { return $('#timetableEmpty'); },
-    get timetableWrapper(){ return $('#timetableWrapper'); },
-    get btnExportPNG()    { return $('#btnExportPNG'); },
-    get btnExportPDF()    { return $('#btnExportPDF'); },
-    get btnExportHTML()   { return $('#btnExportHTML'); },
-    get btnExportCopy()   { return $('#btnExportCopy'); },
-    get btnPrint()        { return $('#btnPrint'); },
-    get chkAutoGen()      { return $('#chkAutoGen'); },
-    get formatModal()     { return $('#formatModal'); },
-    get modalClose()      { return $('#modalClose'); },
-    get inputPanel()      { return $('#inputPanel'); },
-    get toggleInputBtn()  { return $('#toggleInputBtn'); },
-    get warningsBox()     { return $('#warningsBox'); },
-    get warningsList()    { return $('#warningsList'); },
-    get btnThemeToggle()  { return $('#btnThemeToggle'); },
-  };
+  function cacheDom() {
+    for (const id of [
+      'scheduleInput', 'btnGenerate', 'btnClear', 'btnClearStorage', 'btnLoadExample',
+      'btnFormatHelp', 'statusText', 'parseCount', 'timetable', 'timetableEmpty',
+      'timetableWrapper', 'btnExportPNG', 'btnExportPDF', 'btnExportHTML', 'btnExportCopy',
+      'btnPrint', 'chkAutoGen', 'formatModal', 'modalClose', 'inputPanel',
+      'toggleInputBtn', 'warningsBox', 'warningsList', 'btnThemeToggle',
+    ]) DOM[id] = document.getElementById(id);
+  }
 
   // ---------- util ----------
 
@@ -196,14 +179,14 @@ Friday
       if (m24) {
         const h = parseInt(m24[1], 10);
         const min = parseInt(m24[2], 10);
-        if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+        if (h > 23 || min < 0 || min > 59) return null;
         return h * 60 + min;
       }
 
       const mBare = str.match(/^(\d{1,2})$/);
       if (mBare) {
         const h = parseInt(mBare[1], 10);
-        if (h < 0 || h > 23) return null;
+        if (h > 23) return null;
         return h * 60;
       }
 
@@ -401,6 +384,7 @@ Friday
         }
       }
 
+      // column count is only final after every class is placed
       for (const cls of sorted) {
         cls._overlapTotal = active.length;
       }
@@ -412,85 +396,146 @@ Friday
   })();
 
   // ---------- Fitter ----------
-  // no truncation: pick font size + column width so every text fits its block.
-  // text that physically cannot fit a very short block goes to tooltip instead.
+  // no truncation: pick font size + column width so every detail fits its block.
+  // two layout modes so short classes keep all fields instead of hiding them:
+  //   full    — code / name / time / room on separate lines
+  //   compact — code / name / "time · room" on one line, tighter padding
+  // blocks shorter than one slot grow to one slot, never past the next class.
 
   const Fitter = (() => {
     // font ladder, largest first — bigger font wins if width stays sane
-    const LADDER      = [12, 11.5, 11, 10.5, 10, 9.5, 9];
+    const LADDER      = [12, 11.5, 11, 10.5, 10, 9.5, 9, 8.5, 8, 7.5, 7];
     const PASS1_MAX_W = 340;   // prefer sizes fitting this width
     const PASS2_MAX_W = 560;   // fallback cap; verify pass can widen further
     const MIN_W       = 64;
     const STEP        = 8;
+    const MIN_H       = 44;    // minimum block height = one slot
+    const GAP         = 3;
 
-    // must match style.css .class-block metrics
-    const PAD_X   = 24;  // padding 10+10 + borders 1+3
-    const PAD_Y   = 16;  // padding 7+7 + borders 1+1
-    const BADGE_W = 34;  // code padding-right reserve
-    const GAP     = 3;
+    // metrics must match style.css .class-block / .class-block--compact
+    const MODES = {
+      full:    { PAD_X: 24, PAD_Y: 16 },  // padding 10+10 + borders 1+3 / 7+7 + borders 1+1
+      compact: { PAD_X: 20, PAD_Y: 10 },  // padding 8+8 + borders 1+3 / 4+4 + borders 1+1
+    };
+    const BADGE_W = 34; // code padding-right reserve
 
-    const mono  = (px, wt) => `${wt} ${px}px "IBM Plex Mono", monospace`;
-    const sansF = (px) => `400 ${px}px "Open Sans", sans-serif`;
-
-    // what rows show at block height H
-    function rows(H) {
-      return {
-        name: H >= 44,
-        meta: H >= 64,
-        room: H >= 100,
-      };
-    }
+    const mono = (px, wt) => `${wt} ${px}px "IBM Plex Mono", monospace`;
+    const sans = (px) => `400 ${px}px "Open Sans", sans-serif`;
 
     // height needed at font f, width W
-    function neededHeight(cls, f, W, H) {
-      const show = rows(H);
-      const innerW = W - PAD_X;
-      let h = f * 1.2; // code line (code must fit one line)
-      if (show.meta) h += GAP + TextFit.wrapLines(`${cls.startTime}–${cls.endTime}`, innerW, mono(f * 0.78, 400)) * f * 0.78 * 1.25;
-      if (show.room) h += GAP + TextFit.wrapLines(cls.room, innerW, mono(f * 0.78, 400)) * f * 0.78 * 1.25;
-      if (show.name && cls.name) {
-        h += GAP + TextFit.wrapLines(cls.name, innerW, sansF(f * 0.92)) * f * 0.92 * 1.3;
+    function neededHeight(cls, f, W, mode) {
+      const m      = MODES[mode];
+      const innerW = W - m.PAD_X;
+      const metaF  = f * 0.78;
+      const rows   = [f * 1.2]; // code line (must fit one line)
+
+      if (cls.name) {
+        rows.push(TextFit.wrapLines(cls.name, innerW, sans(f * 0.92)) * f * 0.92 * 1.3);
       }
-      return h;
+      if (mode === 'full') {
+        rows.push(TextFit.wrapLines(`${cls.startTime}–${cls.endTime}`, innerW, mono(metaF, 400)) * metaF * 1.25);
+        rows.push(TextFit.wrapLines(cls.room, innerW, mono(metaF, 400)) * metaF * 1.25);
+      } else {
+        rows.push(TextFit.wrapLines(`${cls.startTime}–${cls.endTime} · ${cls.room}`, innerW, mono(metaF, 400)) * metaF * 1.25);
+      }
+
+      return rows.reduce((a, b) => a + b, 0) + (rows.length - 1) * GAP;
     }
 
     // smallest width where block fits at font f; null if none ≤ maxW
-    function solveWidth(cls, f, H, maxW) {
+    function solveWidth(cls, f, H, mode, maxW) {
+      const m     = MODES[mode];
       const codeW = TextFit.measure(cls.code, mono(f, 700));
-      const start = Math.max(MIN_W, codeW + PAD_X + BADGE_W + 2);
+      const start = Math.max(MIN_W, codeW + m.PAD_X + BADGE_W + 2);
       for (let W = start; W <= maxW; W += STEP) {
-        if (neededHeight(cls, f, W, H) <= H - PAD_Y + 0.5) return W;
+        if (neededHeight(cls, f, W, mode) <= H - m.PAD_Y + 0.5) return W;
       }
       return null;
     }
 
-    // per block: {f, w}. prefer large font at sane width, else wider, else min font.
+    // per block: {f, w, mode}. prefer full layout + large font at sane width,
+    // then compact, then wider columns, else smallest font (overflow → tooltip).
     function fitBlock(cls, H) {
-      for (const f of LADDER) {
-        let w = solveWidth(cls, f, H, PASS1_MAX_W);
-        if (w !== null) return { f, w };
+      for (const maxW of [PASS1_MAX_W, PASS2_MAX_W]) {
+        for (const mode of ['full', 'compact']) {
+          for (const f of LADDER) {
+            const w = solveWidth(cls, f, H, mode, maxW);
+            if (w !== null) return { f, w, mode };
+          }
+        }
       }
-      for (const f of LADDER) {
-        const w = solveWidth(cls, f, H, PASS2_MAX_W);
-        if (w !== null) return { f, w };
+      return { f: LADDER[LADDER.length - 1], w: PASS2_MAX_W, mode: 'compact' };
+    }
+
+    // height a block may occupy before covering the next class in its column
+    function availableHeight(cls, classes, dayEnd) {
+      let next = dayEnd - cls.startMinutes;
+      for (const other of classes) {
+        if (other !== cls && other._overlapCol === cls._overlapCol &&
+            other.startMinutes > cls.startMinutes) {
+          next = Math.min(next, other.startMinutes - cls.startMinutes);
+        }
       }
-      return { f: LADDER[LADDER.length - 1], w: PASS2_MAX_W };
+      return (next / 30) * SLOT_H;
     }
 
     // day width = widest block × its overlap column count
-    function fitDay(classes) {
+    function fitDay(classes, dayEnd) {
       let dayW = 0;
       for (const cls of classes) {
-        const H = Math.max(((cls.endMinutes - cls.startMinutes) / 30) * SLOT_H, 28);
-        const fit = fitBlock(cls, H);
-        cls._fit = fit;
-        cls._H = H;
-        dayW = Math.max(dayW, (fit.w + 8) * Math.max(cls._overlapTotal, 1));
+        const durH = ((cls.endMinutes - cls.startMinutes) / 30) * SLOT_H;
+        const H    = Math.max(durH, Math.min(MIN_H, availableHeight(cls, classes, dayEnd)));
+        cls._H   = H;
+        cls._fit = fitBlock(cls, H);
+        dayW = Math.max(dayW, (cls._fit.w + 8) * Math.max(cls._overlapTotal, 1));
       }
       return Math.max(dayW, 132);
     }
 
     return { fitDay };
+  })();
+
+  // ---------- NowLine ----------
+  // labeled current-time marker on today's column; refreshes itself so it
+  // never goes stale or looks like a stray line.
+
+  const NowLine = (() => {
+    let line  = null;
+    let label = null;
+    let range = null; // { minTime, maxTime }
+
+    function mount(dayCol, minTime, maxTime) {
+      line = document.createElement('div');
+      line.className = 'tt-now-line';
+      line.setAttribute('aria-hidden', 'true');
+      label = document.createElement('span');
+      label.className = 'tt-now-line__label';
+      line.appendChild(label);
+      dayCol.appendChild(line);
+      range = { minTime, maxTime };
+      refresh();
+    }
+
+    function refresh() {
+      if (!line || !range) return;
+      const now  = new Date();
+      const mins = now.getHours() * 60 + now.getMinutes();
+      const { minTime, maxTime } = range;
+      const visible = mins >= minTime && mins <= maxTime;
+      line.style.display = visible ? '' : 'none';
+      if (visible) {
+        line.style.top = `${((mins - minTime) / 30) * SLOT_H}px`;
+        label.textContent = `NOW ${Parser.formatTime(mins)}`;
+      }
+    }
+
+    function clear() {
+      line = null;
+      label = null;
+      range = null;
+    }
+
+    return { mount, refresh, clear };
   })();
 
   // ---------- Renderer ----------
@@ -506,26 +551,13 @@ Friday
           if (cls.endMinutes   > max) max = cls.endMinutes;
         }
       }
-      min = Math.max(0,    Math.floor(min / 30) * 30 - 30);
-      max = Math.min(1440, Math.ceil(max  / 30) * 30 + 30);
+      min = Math.max(0, Math.floor(min / 30) * 30 - 30);
+      max = Math.ceil(max / 30) * 30 + 30; // no 24h clamp — overnight classes render past midnight
       return { minTime: min, maxTime: max };
     }
 
     function buildTooltip(cls) {
       return `${cls.code} — ${cls.name} · ${cls.startTime}–${cls.endTime} · ${cls.room} · ${cls.type}`;
-    }
-
-    function updateCurrentTimeLine(minTime, maxTime, todayCol) {
-      if (!todayCol) return;
-      const now = new Date();
-      const nowMins = now.getHours() * 60 + now.getMinutes();
-      if (nowMins < minTime || nowMins > maxTime) return;
-
-      const bar = document.createElement('div');
-      bar.className = 'tt-now-line';
-      bar.setAttribute('aria-hidden', 'true');
-      bar.style.top = `${((nowMins - minTime) / 30) * SLOT_H}px`;
-      todayCol.appendChild(bar);
     }
 
     // real-layout check: shrink font on vertical overflow, widen day col on horizontal
@@ -537,7 +569,7 @@ Friday
           const overW = b.scrollWidth - b.clientWidth;
           if (overH > 1) {
             const cur = parseFloat(getComputedStyle(b).fontSize);
-            b.style.fontSize = `${Math.max(8.5, cur - 1)}px`;
+            b.style.fontSize = `${Math.max(7, cur - 1)}px`;
             dirty = true;
           }
           if (overW > 1) {
@@ -565,7 +597,7 @@ Friday
 
       // overlaps first — fitter needs column counts; day._width from fitter
       days.forEach(day => OverlapResolver.resolve(day.classes));
-      days.forEach(day => { day._width = Fitter.fitDay(day.classes); });
+      days.forEach(day => { day._width = Fitter.fitDay(day.classes, maxTime); });
 
       timetableEl.innerHTML = '';
       timetableEl.removeAttribute('style');
@@ -646,21 +678,16 @@ Friday
         }
 
         for (const cls of day.classes) {
-          const isLab = cls.type === 'Lab';
+          const isLab   = cls.type === 'Lab';
           const { f, w } = cls._fit;
-          const H = cls._H;
-          const topPx    = ((cls.startMinutes - minTime) / 30) * SLOT_H;
-          const heightPx = H;
-          const show = {
-            name: H >= 44 && !!cls.name && TextFit.wrapLines(cls.name, w - 24, `400 ${f * 0.92}px "Open Sans", sans-serif`) >= 1,
-            meta: H >= 64,
-            room: H >= 100,
-          };
+          const compact = cls._fit.mode === 'compact';
+          const H       = cls._H;
+          const topPx   = ((cls.startMinutes - minTime) / 30) * SLOT_H;
 
           const block = document.createElement('div');
           block.className = [
             'class-block',
-            isLab ? 'class-block--lab' : 'class-block--lecture',
+            compact ? 'class-block--compact' : '',
             cls._overlapTotal > 1 ? 'class-block--overlap' : '',
           ].filter(Boolean).join(' ');
 
@@ -669,10 +696,9 @@ Friday
           const details = buildTooltip(cls);
           block.setAttribute('aria-label', details);
           block.title = details;
-          block.dataset.details = details;
 
           block.style.top    = `${topPx}px`;
-          block.style.height = `${heightPx}px`;
+          block.style.height = `${H}px`;
           block.style.fontSize = `${f}px`;
 
           if (cls._overlapTotal > 1) {
@@ -708,21 +734,21 @@ Friday
           codeEl.textContent = cls.code;
           block.appendChild(codeEl);
 
-          if (show.name) {
+          if (cls.name) {
             const nameEl = document.createElement('div');
             nameEl.className = 'class-block__name';
             nameEl.textContent = cls.name;
             block.appendChild(nameEl);
           }
 
-          if (show.meta) {
-            const metaEl = document.createElement('div');
-            metaEl.className = 'class-block__meta';
-            metaEl.textContent = `${cls.startTime}–${cls.endTime}`;
-            block.appendChild(metaEl);
-          }
+          const metaEl = document.createElement('div');
+          metaEl.className = 'class-block__meta';
+          metaEl.textContent = compact
+            ? `${cls.startTime}–${cls.endTime} · ${cls.room}`
+            : `${cls.startTime}–${cls.endTime}`;
+          block.appendChild(metaEl);
 
-          if (show.room) {
+          if (!compact) {
             const roomEl = document.createElement('div');
             roomEl.className = 'class-block__room';
             roomEl.textContent = cls.room;
@@ -745,13 +771,16 @@ Friday
       DOM.timetableEmpty.style.display = 'none';
 
       verifyFit(timetableEl);
-      updateCurrentTimeLine(minTime, maxTime, todayCol);
+
+      if (todayCol) NowLine.mount(todayCol, minTime, maxTime);
+      else NowLine.clear();
     }
 
     function clearTimetable() {
       DOM.timetable.innerHTML = '';
       DOM.timetable.style.display = 'none';
       DOM.timetableEmpty.style.display = 'flex';
+      NowLine.clear();
     }
 
     return { renderTimetable, clearTimetable };
@@ -972,13 +1001,14 @@ Friday
         const canvas = await buildExportCanvas();
         canvas.toBlob(async (blob) => {
           try {
+            if (!blob) throw new Error('canvas.toBlob returned null');
             await navigator.clipboard.write([
               new ClipboardItem({ 'image/png': blob }),
             ]);
             setStatus('IMAGE COPIED', 'ok');
           } catch (e) {
             console.warn('[SCHEDGEN] Clipboard write failed, downloading instead:', e);
-            triggerDownload(URL.createObjectURL(blob), `schedgen-${dateSlug()}.png`);
+            if (blob) triggerDownload(URL.createObjectURL(blob), `schedgen-${dateSlug()}.png`);
             setStatus('CLIPBOARD UNAVAILABLE — FILE SAVED INSTEAD', 'warn');
           }
         }, 'image/png');
@@ -1011,16 +1041,13 @@ Friday
   }
 
   function saveToStorage() {
-    try { localStorage.setItem(STORAGE_KEY, DOM.textarea.value); } catch (_) {}
+    try { localStorage.setItem(STORAGE_KEY, DOM.scheduleInput.value); } catch (_) {}
   }
 
   function loadFromStorage() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        DOM.textarea.value = saved;
-        state.rawInput = saved;
-      }
+      if (saved) DOM.scheduleInput.value = saved;
     } catch (_) {}
   }
 
@@ -1050,11 +1077,11 @@ Friday
       li.textContent = w;
       list.appendChild(li);
     });
-    box.hidden = false; // in normal flow — never overlaps buttons
+    box.hidden = false;
   }
 
   function liveParseWarnings() {
-    const raw = DOM.textarea.value.trim();
+    const raw = DOM.scheduleInput.value.trim();
     if (!raw) { showWarnings([]); return; }
     showWarnings(Parser.parseSchedule(raw).warnings);
   }
@@ -1065,8 +1092,10 @@ Friday
     DOM.timetableWrapper.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  async function handleGenerate() {
-    const raw = DOM.textarea.value.trim();
+  // opts.scroll = false for background renders (auto-generate) — never scrolls
+  // the page while the user is typing.
+  async function handleGenerate(opts = {}) {
+    const raw = DOM.scheduleInput.value.trim();
     if (!raw) {
       setStatus('NO INPUT — ENTER SCHEDULE DATA', 'err');
       updateParseCount(0, 0);
@@ -1074,7 +1103,6 @@ Friday
       return;
     }
 
-    state.rawInput = raw;
     saveToStorage();
 
     const result = Parser.parseSchedule(raw);
@@ -1114,12 +1142,11 @@ Friday
       console.groupEnd();
     }
 
-    scrollToTimetableOnMobile();
+    if (opts.scroll !== false) scrollToTimetableOnMobile();
   }
 
   function handleClear() {
-    DOM.textarea.value = '';
-    state.rawInput = '';
+    DOM.scheduleInput.value = '';
     state.parsedData = null;
     state.hasSchedule = false;
     saveToStorage();
@@ -1136,9 +1163,7 @@ Friday
   }
 
   function handleLoadExample() {
-    DOM.textarea.value = EXAMPLE_INPUT;
-    state.rawInput = EXAMPLE_INPUT;
-    saveToStorage();
+    DOM.scheduleInput.value = EXAMPLE_INPUT;
     showWarnings([]);
     handleGenerate();
   }
@@ -1146,13 +1171,15 @@ Friday
   function scheduleAutoGenerate() {
     if (!state.autoGenerate) return;
     clearTimeout(state.autoGenTimer);
-    state.autoGenTimer = setTimeout(handleGenerate, 500);
+    state.autoGenTimer = setTimeout(() => handleGenerate({ scroll: false }), 500);
   }
 
   function saveTheme(theme) {
     try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
   }
 
+  // re-render the already-parsed schedule — a theme switch must not re-parse
+  // the textarea (that would silently generate text the user never confirmed)
   function applyTheme(theme) {
     document.body.setAttribute('data-theme', theme);
     state.theme = theme;
@@ -1164,8 +1191,7 @@ Friday
         `Current theme: ${theme}. Click to switch to ${next}.`);
     }
 
-    // re-render — shade palette + tooltip colors follow theme
-    if (state.hasSchedule && state.parsedData) handleGenerate();
+    if (state.hasSchedule && state.parsedData) Renderer.renderTimetable(state.parsedData);
   }
 
   function loadTheme() {
@@ -1183,7 +1209,7 @@ Friday
     state.modalTrigger = document.activeElement;
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
-    DOM.modalClose && DOM.modalClose.focus();
+    if (DOM.modalClose) DOM.modalClose.focus();
   }
 
   function closeFormatModal() {
@@ -1227,11 +1253,11 @@ Friday
     }
   }
 
-  // focused block → full details in status line (replaces alert())
+  // focused block → full details in status line
   function showBlockDetails(block) {
     const el = DOM.statusText;
     if (!el || !block) return;
-    el.textContent = block.dataset.details || '';
+    el.textContent = block.getAttribute('aria-label') || '';
   }
 
   function restoreStatus() {
@@ -1239,63 +1265,58 @@ Friday
   }
 
   function bindEvents() {
-    DOM.btnGenerate     && DOM.btnGenerate.addEventListener('click', handleGenerate);
-    DOM.btnClear        && DOM.btnClear.addEventListener('click', handleClear);
-    DOM.btnClearStorage && DOM.btnClearStorage.addEventListener('click', handleClearStorage);
-    DOM.btnLoadExample  && DOM.btnLoadExample.addEventListener('click', handleLoadExample);
-    DOM.btnFormatHelp   && DOM.btnFormatHelp.addEventListener('click', openFormatModal);
-    DOM.modalClose      && DOM.modalClose.addEventListener('click', closeFormatModal);
-    DOM.toggleInputBtn  && DOM.toggleInputBtn.addEventListener('click', toggleInputPanel);
+    DOM.btnGenerate.addEventListener('click', () => handleGenerate());
+    DOM.btnClear.addEventListener('click', handleClear);
+    DOM.btnClearStorage.addEventListener('click', handleClearStorage);
+    DOM.btnLoadExample.addEventListener('click', handleLoadExample);
+    DOM.btnFormatHelp.addEventListener('click', openFormatModal);
+    DOM.modalClose.addEventListener('click', closeFormatModal);
+    DOM.toggleInputBtn.addEventListener('click', toggleInputPanel);
 
-    DOM.btnExportPNG  && DOM.btnExportPNG.addEventListener('click', Exporter.exportPNG);
-    DOM.btnExportPDF  && DOM.btnExportPDF.addEventListener('click', Exporter.exportPDF);
-    DOM.btnExportHTML && DOM.btnExportHTML.addEventListener('click', Exporter.exportHTML);
-    DOM.btnExportCopy && DOM.btnExportCopy.addEventListener('click', Exporter.copyToClipboard);
-    DOM.btnPrint      && DOM.btnPrint.addEventListener('click', Exporter.printSchedule);
+    DOM.btnExportPNG.addEventListener('click', Exporter.exportPNG);
+    DOM.btnExportPDF.addEventListener('click', Exporter.exportPDF);
+    DOM.btnExportHTML.addEventListener('click', Exporter.exportHTML);
+    DOM.btnExportCopy.addEventListener('click', Exporter.copyToClipboard);
+    DOM.btnPrint.addEventListener('click', Exporter.printSchedule);
 
-    DOM.btnThemeToggle && DOM.btnThemeToggle.addEventListener('click', () => {
+    DOM.btnThemeToggle.addEventListener('click', () => {
       const next = state.theme === 'dark' ? 'light' : 'dark';
       saveTheme(next);
       applyTheme(next);
     });
 
-    DOM.chkAutoGen && DOM.chkAutoGen.addEventListener('change', (e) => {
+    DOM.chkAutoGen.addEventListener('change', (e) => {
       state.autoGenerate = e.target.checked;
       try { localStorage.setItem(AUTOGEN_KEY, state.autoGenerate ? '1' : '0'); } catch (_) {}
     });
 
     const tt = DOM.timetable;
-    if (tt) {
-      tt.addEventListener('focusin', (e) => {
-        const block = e.target.closest('.class-block');
-        if (block) showBlockDetails(block);
-      });
-      tt.addEventListener('focusout', () => restoreStatus());
-      tt.addEventListener('keydown', (e) => {
-        const block = e.target.closest('.class-block');
-        if (block && (e.key === 'Enter' || e.key === ' ')) {
-          e.preventDefault();
-          showBlockDetails(block);
-        }
-      });
-    }
+    tt.addEventListener('focusin', (e) => {
+      const block = e.target.closest('.class-block');
+      if (block) showBlockDetails(block);
+    });
+    tt.addEventListener('focusout', () => restoreStatus());
+    tt.addEventListener('keydown', (e) => {
+      const block = e.target.closest('.class-block');
+      if (block && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        showBlockDetails(block);
+      }
+    });
 
-    const ta = DOM.textarea;
-    if (ta) {
-      ta.addEventListener('input', () => {
-        state.rawInput = ta.value;
-        saveToStorage();
-        liveParseWarnings();
-        scheduleAutoGenerate();
-      });
+    const ta = DOM.scheduleInput;
+    ta.addEventListener('input', () => {
+      saveToStorage();
+      liveParseWarnings();
+      scheduleAutoGenerate();
+    });
 
-      ta.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-          e.preventDefault();
-          handleGenerate();
-        }
-      });
-    }
+    ta.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleGenerate();
+      }
+    });
 
     document.addEventListener('keydown', (e) => {
       trapModalFocus(e);
@@ -1308,12 +1329,13 @@ Friday
       }
     });
 
-    DOM.formatModal && DOM.formatModal.addEventListener('click', (e) => {
+    DOM.formatModal.addEventListener('click', (e) => {
       if (e.target === DOM.formatModal) closeFormatModal();
     });
   }
 
   function init() {
+    cacheDom();
     loadFromStorage();
     bindEvents();
     setExportEnabled(false);
@@ -1327,7 +1349,10 @@ Friday
 
     applyTheme(loadTheme());
 
-    if (DOM.textarea && DOM.textarea.value.trim()) {
+    // keep the NOW marker accurate while the page stays open
+    setInterval(NowLine.refresh, 30000);
+
+    if (DOM.scheduleInput && DOM.scheduleInput.value.trim()) {
       setStatus('INPUT RESTORED — PRESS GENERATE', '');
     } else {
       setStatus('READY — ENTER SCHEDULE DATA OR LOAD EXAMPLE', '');

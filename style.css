@@ -1,5 +1,5 @@
 /* ============================================================
-   SCHEDGEN v3.0 — Metro Monochrome
+   SCHEDGEN v3.1 — Metro Monochrome
    Single hue (212 blue). Flat. Geometric. Purposeful space.
    ============================================================ */
 
@@ -844,6 +844,25 @@ button, .textarea {
   pointer-events: none;
 }
 
+/* label makes the marker self-explanatory instead of a stray blue line */
+.tt-now-line__label {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--raised);
+  border: 1px solid var(--now);
+  border-radius: 1px;
+  color: var(--now);
+  font-family: var(--f-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
 /* ---------- class blocks ---------- */
 
 .class-block {
@@ -875,6 +894,11 @@ button, .textarea {
 }
 
 .class-block--overlap { border-style: dashed; }
+
+/* short classes: tighter padding so every detail still fits */
+.class-block--compact {
+  padding: 4px 8px;
+}
 
 .class-block__badge {
   position: absolute;
@@ -1108,6 +1132,8 @@ button, .textarea {
 
   .tt-grid-line { border-top-color: #e0e0e0 !important; }
   .tt-grid-line--hour { border-top-color: #bbb !important; }
+
+  .tt-now-line { display: none !important; }
 
   .class-block { box-shadow: none !important; }
   .class-block__name { color: #333 !important; }

@@ -34,11 +34,12 @@ Each class line has: subject code and name, then the time range, then two option
 
 ## Reading the timetable
 
-- Long subject names wrap and shrink to fit — text is never cut off. For very short classes, hover the block (or press Enter on it) to see the full details.
+- Every block shows everything you entered: subject code, name, time range, room and type. Nothing is hidden for short classes — they switch to a compact layout (smaller text, tighter padding, time and room sharing one line) and the column widens until it all fits. Classes shorter than half an hour grow to one grid slot.
+- Long subject names wrap and shrink to fit — text is never cut off. Hover any block (or press Enter on it) to see all details in one line.
 - Two classes at the same time sit side by side, marked with a dashed border.
-- A line on today's column shows the current time.
+- A blue line labeled **NOW 3:47 PM** marks the current time on today's column. It moves by itself every 30 seconds and only appears while the current time is inside the timetable's hours.
 - The **DARK** button switches between light and dark mode. Your choice is remembered.
-- Turn on **AUTO-GENERATE** to update the timetable as you type.
+- Turn on **AUTO-GENERATE** to update the timetable as you type. It updates quietly without scrolling the page.
 
 ## Saving the timetable
 
